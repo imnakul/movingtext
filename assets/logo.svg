@@ -1,0 +1,20 @@
+<svg width="640" height="160" viewBox="0 0 640 160" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="accentFade" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6384F5" stop-opacity="0"/>
+      <stop offset="45%" stop-color="#6384F5" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#6384F5" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="640" height="160" rx="20" fill="#0A0A0D"/>
+
+  <g transform="translate(28, 28)">
+    <rect x="0" y="0" width="104" height="104" rx="18" fill="none" stroke="#26262D" stroke-width="3"/>
+    <rect x="14" y="14" width="76" height="76" rx="10" fill="none" stroke="#3A3A44" stroke-width="2"/>
+    <rect x="0" y="0" width="104" height="104" rx="18" fill="none" stroke="url(#accentFade)" stroke-width="3" stroke-dasharray="70 350"/>
+  </g>
+
+  <text x="160" y="76" font-family="'Segoe UI', 'Plus Jakarta Sans', system-ui, sans-serif" font-size="46" font-weight="600" fill="#F0F0F3" letter-spacing="-0.5">Moving<tspan fill="#6384F5">Text</tspan></text>
+  <text x="161" y="106" font-family="'Segoe UI', 'Plus Jakarta Sans', system-ui, sans-serif" font-size="16" font-weight="400" fill="#94949E" letter-spacing="0.2">Your reminders, always in motion</text>
+</svg>

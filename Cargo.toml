@@ -1,0 +1,33 @@
+[package]
+name = "movingtext"
+version = "0.1.0"
+edition = "2021"
+description = "A customizable scrolling text marquee that hugs the edges of your screen. Your reminders, always in motion."
+license = "MIT"
+
+[dependencies]
+eframe = "0.29"
+egui = "0.29"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dirs = "5.0"
+parking_lot = "0.12"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Foundation",
+    "Foundation_Numerics",
+    "Win32_Foundation",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+    "Win32_UI_Controls",
+]

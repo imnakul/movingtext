@@ -1,0 +1,256 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use windows::core::{HSTRING, PCWSTR};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, BITMAPINFO, BITMAPINFOHEADER,
+    BI_RGB, DIB_RGB_COLORS,
+};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Shell::{
+    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
+    DestroyMenu, DestroyWindow, GetCursorPos, RegisterClassW, SetForegroundWindow, TrackPopupMenu,
+    HICON, ICONINFO, MF_STRING, TPM_BOTTOMALIGN, TPM_LEFTALIGN, WM_COMMAND, WM_LBUTTONDBLCLK,
+    WM_LBUTTONUP, WM_RBUTTONUP, WM_USER, WNDCLASSW, WS_POPUP,
+};
+
+const WM_TRAY_ICON: u32 = WM_USER + 101;
+const ID_TRAY_SETTINGS: usize = 2001;
+const ID_TRAY_EXIT: usize = 2002;
+
+static TRAY_CLASS_NAME: &str = "MovingTextTrayClass";
+
+/// Set by the tray thread when the settings window should be shown again;
+/// polled by `SettingsApp::update` (which keeps repainting every ~50ms even
+/// while hidden) so the restore goes through eframe's own viewport command
+/// channel instead of poking the native HWND out-of-band, which desyncs
+/// winit's visibility/focus state and breaks later Hide/Close.
+pub static SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+pub struct SystemTray {
+    hwnd: HWND,
+    nid: NOTIFYICONDATAW,
+    hicon: HICON,
+}
+
+unsafe impl Send for SystemTray {}
+unsafe impl Sync for SystemTray {}
+
+fn create_app_icon() -> windows::core::Result<HICON> {
+    let width: i32 = 32;
+    let height: i32 = 32;
+
+    unsafe {
+        let mem_dc = CreateCompatibleDC(None);
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height, // Top-down DIB
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+        let hcolor = CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS, &mut bits, None, 0)?;
+
+        if !bits.is_null() {
+            let pixel_slice =
+                std::slice::from_raw_parts_mut(bits as *mut u8, (width * height * 4) as usize);
+
+            for y in 0..height {
+                for x in 0..width {
+                    let idx = ((y * width + x) * 4) as usize;
+
+                    // Minimal, professional outline frame shape (2px stroke line)
+                    let is_stroke = (x >= 4 && x <= 27 && (y == 4 || y == 5 || y == 26 || y == 27))
+                        || (y >= 4 && y <= 27 && (x == 4 || x == 5 || x == 26 || x == 27));
+
+                    let is_corner = (x <= 8 || x >= 23) && (y <= 8 || y >= 23);
+
+                    if is_stroke {
+                        if is_corner {
+                            // Electric Cyan Accent Corners
+                            pixel_slice[idx] = 248; // B
+                            pixel_slice[idx + 1] = 189; // G
+                            pixel_slice[idx + 2] = 56; // R
+                            pixel_slice[idx + 3] = 255; // A
+                        } else {
+                            // Minimal Crisp Silver Outline Stroke
+                            pixel_slice[idx] = 230; // B
+                            pixel_slice[idx + 1] = 230; // G
+                            pixel_slice[idx + 2] = 230; // R
+                            pixel_slice[idx + 3] = 255; // A
+                        }
+                    } else {
+                        // Fully transparent interior
+                        pixel_slice[idx] = 0;
+                        pixel_slice[idx + 1] = 0;
+                        pixel_slice[idx + 2] = 0;
+                        pixel_slice[idx + 3] = 0;
+                    }
+                }
+            }
+        }
+
+        // Mask bitmap
+        let hmask = CreateDIBSection(
+            mem_dc,
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut std::ptr::null_mut(),
+            None,
+            0,
+        )?;
+
+        let icon_info = ICONINFO {
+            fIcon: windows::Win32::Foundation::BOOL(1),
+            xHotspot: 0,
+            yHotspot: 0,
+            hbmMask: hmask,
+            hbmColor: hcolor,
+        };
+
+        let hicon = CreateIconIndirect(&icon_info)?;
+
+        let _ = DeleteObject(hcolor);
+        let _ = DeleteObject(hmask);
+        let _ = DeleteDC(mem_dc);
+
+        Ok(hicon)
+    }
+}
+
+pub fn restore_settings_window() {
+    SHOW_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+impl SystemTray {
+    pub fn new() -> windows::core::Result<Self> {
+        unsafe {
+            let instance = GetModuleHandleW(None)?;
+            let class_hstr = HSTRING::from(TRAY_CLASS_NAME);
+
+            let wnd_class = WNDCLASSW {
+                hInstance: instance.into(),
+                lpszClassName: PCWSTR(class_hstr.as_ptr()),
+                lpfnWndProc: Some(Self::wnd_proc),
+                ..Default::default()
+            };
+            RegisterClassW(&wnd_class);
+
+            let hwnd = CreateWindowExW(
+                Default::default(),
+                PCWSTR(class_hstr.as_ptr()),
+                PCWSTR(HSTRING::from("MovingTextTray").as_ptr()),
+                WS_POPUP,
+                0,
+                0,
+                0,
+                0,
+                None,
+                None,
+                instance,
+                None,
+            )?;
+
+            let hicon = create_app_icon()?;
+
+            let mut nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: hwnd,
+                uID: 1,
+                uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
+                uCallbackMessage: WM_TRAY_ICON,
+                hIcon: hicon,
+                ..Default::default()
+            };
+
+            let tip = "MovingText, always in motion\0"
+                .encode_utf16()
+                .collect::<Vec<u16>>();
+            let len = tip.len().min(nid.szTip.len());
+            nid.szTip[..len].copy_from_slice(&tip[..len]);
+
+            let _ = Shell_NotifyIconW(NIM_ADD, &nid);
+
+            Ok(Self { hwnd, nid, hicon })
+        }
+    }
+
+    unsafe extern "system" fn wnd_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match msg {
+            WM_TRAY_ICON => {
+                let msg_type = lparam.0 as u32;
+                if msg_type == WM_LBUTTONDBLCLK || msg_type == WM_LBUTTONUP {
+                    restore_settings_window();
+                } else if msg_type == WM_RBUTTONUP {
+                    let mut pos = POINT::default();
+                    let _ = GetCursorPos(&mut pos);
+
+                    let menu = CreatePopupMenu().unwrap();
+                    let _ = AppendMenuW(
+                        menu,
+                        MF_STRING,
+                        ID_TRAY_SETTINGS,
+                        PCWSTR(HSTRING::from("⚙ Open Settings").as_ptr()),
+                    );
+                    let _ = AppendMenuW(
+                        menu,
+                        MF_STRING,
+                        ID_TRAY_EXIT,
+                        PCWSTR(HSTRING::from("❌ Exit Application").as_ptr()),
+                    );
+
+                    let _ = SetForegroundWindow(hwnd);
+                    let _ = TrackPopupMenu(
+                        menu,
+                        TPM_LEFTALIGN | TPM_BOTTOMALIGN,
+                        pos.x,
+                        pos.y,
+                        0,
+                        hwnd,
+                        None,
+                    );
+                    let _ = DestroyMenu(menu);
+                }
+                LRESULT(0)
+            }
+            WM_COMMAND => {
+                let id = (wparam.0 & 0xffff) as usize;
+                if id == ID_TRAY_SETTINGS {
+                    restore_settings_window();
+                } else if id == ID_TRAY_EXIT {
+                    std::process::exit(0);
+                }
+                LRESULT(0)
+            }
+            _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+        }
+    }
+}
+
+impl Drop for SystemTray {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = Shell_NotifyIconW(NIM_DELETE, &self.nid);
+            if !self.hicon.is_invalid() {
+                let _ = DestroyIcon(self.hicon);
+            }
+            if !self.hwnd.is_invalid() {
+                let _ = DestroyWindow(self.hwnd);
+            }
+        }
+    }
+}
