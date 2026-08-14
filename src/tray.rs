@@ -1,17 +1,19 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, BITMAPINFO, BITMAPINFOHEADER,
     BI_RGB, DIB_RGB_COLORS,
 };
+use windows::Win32::System::Diagnostics::Debug::OutputDebugStringW;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
-    DestroyMenu, DestroyWindow, GetCursorPos, RegisterClassW, SetForegroundWindow, TrackPopupMenu,
+    DestroyMenu, DestroyWindow, GetCursorPos, GetWindowLongPtrW, RegisterClassW,
+    RegisterWindowMessageW, SetForegroundWindow, SetWindowLongPtrW, TrackPopupMenu, GWLP_USERDATA,
     HICON, ICONINFO, MF_STRING, TPM_BOTTOMALIGN, TPM_LEFTALIGN, WM_COMMAND, WM_LBUTTONDBLCLK,
     WM_LBUTTONUP, WM_RBUTTONUP, WM_USER, WNDCLASSW, WS_POPUP,
 };
@@ -21,6 +23,20 @@ const ID_TRAY_SETTINGS: usize = 2001;
 const ID_TRAY_EXIT: usize = 2002;
 
 static TRAY_CLASS_NAME: &str = "MovingTextTrayClass";
+
+/// Explorer broadcasts this registered message to every top-level window
+/// whenever it (re)starts — after a crash, an `explorer.exe` restart, or
+/// because it simply wasn't up yet when this app registered its icon (the
+/// case when MovingText is set to launch at sign-in). Every tray icon on the
+/// system is gone at that point; the fix is to listen for it and re-add.
+static WM_TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
+
+fn debug_log(msg: &str) {
+    let wide: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        OutputDebugStringW(PCWSTR(wide.as_ptr()));
+    }
+}
 
 /// Set by the tray thread when the settings window should be shown again;
 /// polled by `SettingsApp::update` (which keeps repainting every ~50ms even
@@ -178,7 +194,19 @@ impl SystemTray {
             let len = tip.len().min(nid.szTip.len());
             nid.szTip[..len].copy_from_slice(&tip[..len]);
 
-            let _ = Shell_NotifyIconW(NIM_ADD, &nid);
+            // Stashed for `wnd_proc`, which is a bare extern "system" fn with
+            // no access to `self` — this is how it re-adds the icon when
+            // Explorer (re)starts. Leaked deliberately: it must outlive the
+            // window, and the window outlives the app.
+            let nid_ptr = Box::into_raw(Box::new(nid));
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, nid_ptr as isize);
+
+            let taskbar_created = RegisterWindowMessageW(PCWSTR(HSTRING::from("TaskbarCreated").as_ptr()));
+            WM_TASKBAR_CREATED.store(taskbar_created, Ordering::SeqCst);
+
+            if !Shell_NotifyIconW(NIM_ADD, &nid).as_bool() {
+                debug_log("MovingText: Shell_NotifyIconW(NIM_ADD) failed — tray icon not registered yet, will retry on TaskbarCreated");
+            }
 
             Ok(Self { hwnd, nid, hicon })
         }
@@ -233,6 +261,15 @@ impl SystemTray {
                     restore_settings_window();
                 } else if id == ID_TRAY_EXIT {
                     std::process::exit(0);
+                }
+                LRESULT(0)
+            }
+            other if other != 0 && other == WM_TASKBAR_CREATED.load(Ordering::SeqCst) => {
+                // The whole notification area just came back — every icon on
+                // the system, including ours, is gone until re-added.
+                let nid_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const NOTIFYICONDATAW;
+                if !nid_ptr.is_null() && !Shell_NotifyIconW(NIM_ADD, &*nid_ptr).as_bool() {
+                    debug_log("MovingText: tray icon re-add after TaskbarCreated failed");
                 }
                 LRESULT(0)
             }

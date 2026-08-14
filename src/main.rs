@@ -1,15 +1,23 @@
 mod config;
 mod gui;
+mod notch;
 mod overlay;
 mod tray;
 
 use parking_lot::RwLock;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use windows::Win32::System::Console::FreeConsole;
+use windows::Win32::UI::WindowsAndMessaging::{
+    MsgWaitForMultipleObjectsEx, MWMO_INPUTAVAILABLE, QS_ALLINPUT,
+};
+
+/// Target frame interval for the overlay thread, in milliseconds.
+const FRAME_MS: u32 = 16;
 
 use config::AppConfig;
 use gui::SettingsApp;
+use notch::NotchManager;
 use overlay::OverlayManager;
 use tray::SystemTray;
 
@@ -68,8 +76,18 @@ fn main() {
     // Spawn Overlay Render, System Tray & Win32 Message Loop thread
     let overlay_config = Arc::clone(&config);
     std::thread::spawn(move || {
+        // WIC (used for notch wallpapers) needs an initialised apartment on
+        // whichever thread decodes the image.
+        unsafe {
+            let _ = windows::Win32::System::Com::CoInitializeEx(
+                None,
+                windows::Win32::System::Com::COINIT_APARTMENTTHREADED,
+            );
+        }
+
         let _tray = SystemTray::new().ok();
         let mut manager = OverlayManager::new();
+        let mut notch = NotchManager::new(Arc::clone(&overlay_config));
         let mut last_instant = Instant::now();
 
         loop {
@@ -99,7 +117,26 @@ fn main() {
                 manager.render_tick(&cfg, dt);
             }
 
-            std::thread::sleep(Duration::from_millis(16));
+            // Takes its own lock: inline editing writes back into the config.
+            notch.tick(dt);
+
+            // Wait for the next frame *or* the next input message, whichever
+            // comes first. A plain sleep here would hold mouse messages for up
+            // to a frame before answering them — and since the notch window
+            // covers a wide strip along the top of the screen, that shows up as
+            // a cursor that drags whenever it crosses that strip.
+            unsafe {
+                let elapsed = last_instant.elapsed().as_millis() as u32;
+                let wait = FRAME_MS.saturating_sub(elapsed);
+                if wait > 0 {
+                    MsgWaitForMultipleObjectsEx(
+                        None,
+                        wait,
+                        QS_ALLINPUT,
+                        MWMO_INPUTAVAILABLE,
+                    );
+                }
+            }
         }
     });
 

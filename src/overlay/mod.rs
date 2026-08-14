@@ -19,11 +19,15 @@ impl OverlayManager {
     }
 
     pub fn sync_windows(&mut self, config: &AppConfig) {
+        // The master switch is folded in here rather than short-circuiting the
+        // caller, so turning it off takes the existing strips down through the
+        // same path that unticking every edge would.
+        let on = config.overlay_enabled;
         let edges_state = [
-            (Edge::Top, config.edges.top),
-            (Edge::Bottom, config.edges.bottom),
-            (Edge::Left, config.edges.left),
-            (Edge::Right, config.edges.right),
+            (Edge::Top, on && config.edges.top),
+            (Edge::Bottom, on && config.edges.bottom),
+            (Edge::Left, on && config.edges.left),
+            (Edge::Right, on && config.edges.right),
         ];
 
         for (edge, enabled) in edges_state {

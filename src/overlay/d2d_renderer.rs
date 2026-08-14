@@ -12,6 +12,7 @@ use windows::Win32::Graphics::DirectWrite::{
     DWriteCreateFactory, IDWriteFactory, IDWriteTextFormat, IDWriteTextLayout,
     DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_ITALIC,
     DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_WEIGHT_NORMAL,
+    DWRITE_WORD_WRAPPING_NO_WRAP,
 };
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, BITMAPINFO,
@@ -207,11 +208,38 @@ impl D2DRenderer {
                 PCWSTR(HSTRING::from("en-us").as_ptr()),
             )?;
 
+            // Prevent DirectWrite from word wrapping onto line 2
+            text_format.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
+
             // Repeat text string with customizable phrase spacing
             let spacing_str = " ".repeat(config.phrase_spacing as usize);
             let single_phrase_with_spacing = format!("{}{}", config.text, spacing_str);
 
-            let repeat_count = 12;
+            let is_vertical = matches!(edge, Edge::Left | Edge::Right);
+            let screen_extent = if is_vertical { height as f32 } else { width as f32 };
+
+            // Measure single phrase width first to dynamically compute required repetitions
+            let single_text_u16: Vec<u16> = single_phrase_with_spacing.encode_utf16().collect();
+            let single_layout: IDWriteTextLayout = self.dwrite_factory.CreateTextLayout(
+                &single_text_u16,
+                &text_format,
+                10000.0,
+                1000.0,
+            )?;
+
+            let mut metrics = std::mem::zeroed();
+            let _ = single_layout.GetMetrics(&mut metrics);
+            let single_width = if metrics.widthIncludingTrailingWhitespace > 1.0 {
+                metrics.widthIncludingTrailingWhitespace
+            } else if metrics.width > 1.0 {
+                metrics.width
+            } else {
+                100.0
+            };
+
+            // Dynamically calculate repetitions so full_text always fills screen extent + extra buffer
+            let repeat_count = ((screen_extent / single_width).ceil() as usize + 10).max(50);
+
             let mut full_text =
                 String::with_capacity(single_phrase_with_spacing.len() * repeat_count);
             for _ in 0..repeat_count {
@@ -220,13 +248,8 @@ impl D2DRenderer {
 
             let text_u16: Vec<u16> = full_text.encode_utf16().collect();
 
-            let is_vertical = matches!(edge, Edge::Left | Edge::Right);
-
-            let max_layout_w = if is_vertical {
-                height as f32 * 10.0
-            } else {
-                width as f32 * 10.0
-            };
+            // Set layout bounds large enough so DirectWrite never clips or wraps
+            let max_layout_w = 100000.0;
             let max_layout_h = if is_vertical {
                 width as f32
             } else {
@@ -239,22 +262,6 @@ impl D2DRenderer {
                 max_layout_w,
                 max_layout_h,
             )?;
-
-            let single_text_u16: Vec<u16> = single_phrase_with_spacing.encode_utf16().collect();
-            let single_layout: IDWriteTextLayout = self.dwrite_factory.CreateTextLayout(
-                &single_text_u16,
-                &text_format,
-                max_layout_w,
-                max_layout_h,
-            )?;
-
-            let mut metrics = std::mem::zeroed();
-            let _ = single_layout.GetMetrics(&mut metrics);
-            let single_width = if metrics.width > 1.0 {
-                metrics.width
-            } else {
-                100.0
-            };
 
             // Text Brush (premultiplied alpha)
             let fg = config.colors.text_color;

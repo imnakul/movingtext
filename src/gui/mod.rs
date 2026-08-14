@@ -5,21 +5,12 @@ use eframe::egui::{
 use parking_lot::RwLock;
 use std::sync::Arc;
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig, NotchAlign, NotchTheme, SlideKind, StatusItem, UiTheme};
 
-mod colors {
-    use egui::Color32;
+mod filedlg;
+mod theme;
+mod wallpaper;
 
-    pub const BG: Color32 = Color32::from_rgb(10, 10, 13);
-    pub const SIDEBAR_BG: Color32 = Color32::from_rgb(14, 14, 18);
-    pub const SURFACE: Color32 = Color32::from_rgb(20, 20, 25);
-    pub const SURFACE_HOVER: Color32 = Color32::from_rgb(28, 28, 34);
-    pub const DIVIDER: Color32 = Color32::from_rgb(38, 38, 45);
-    pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(240, 240, 243);
-    pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(148, 148, 158);
-    pub const TEXT_TERTIARY: Color32 = Color32::from_rgb(100, 100, 110);
-    pub const ACCENT: Color32 = Color32::from_rgb(99, 132, 245);
-}
 
 pub fn setup_custom_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
@@ -44,18 +35,167 @@ pub fn setup_custom_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
+/// The three things this app actually is, from the user's point of view: the
+/// notch, the border marquee, and the app itself. Every page belongs to one.
+///
+/// Grouping is the whole point of the rail. A flat list of eleven tabs makes
+/// the reader scan; three short lists make them recognise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Tab {
-    Text,
-    Layout,
-    Appearance,
-    Behavior,
+enum Group {
+    Notch,
+    Marquee,
+    App,
 }
+
+impl Group {
+    fn label(self) -> &'static str {
+        match self {
+            Group::Notch => "NOTCH",
+            Group::Marquee => "EDGE MARQUEE",
+            Group::App => "APP",
+        }
+    }
+}
+
+/// Everything the shell needs to know about one page of settings.
+///
+/// This is the scalability story: a new feature is one entry in [`PAGES`] and
+/// one function. Nothing else in this file has to learn about it — not the
+/// rail, not the header, not the transition, not the scroll area.
+struct Page {
+    group: Group,
+    /// Shown in the rail and as the page's own heading.
+    title: &'static str,
+    /// One line under the heading saying what this page is for. Worth writing
+    /// properly: it is the only chance to explain a setting before the user
+    /// has to guess from its name.
+    blurb: &'static str,
+    draw: fn(&mut egui::Ui, &mut PageCtx<'_>),
+}
+
+/// Everything a page is allowed to touch. Passed as one struct so adding a
+/// shared resource later does not mean editing every page signature.
+struct PageCtx<'a> {
+    cfg: &'a mut AppConfig,
+    /// Set by any page that edited the config, so the shell knows to save.
+    changed: &'a mut bool,
+    temp_text: &'a mut String,
+    preview: &'a mut wallpaper::PreviewCache,
+}
+
+/// The rail, top to bottom. Order here is order on screen.
+const PAGES: &[Page] = &[
+    Page {
+        group: Group::Notch,
+        title: "Overview",
+        blurb: "A pill fused to the top of your screen. Hover it and it springs open; scroll \
+                inside to move between slides; it collapses onto whichever slide you left it on.",
+        draw: SettingsApp::page_notch_overview,
+    },
+    Page {
+        group: Group::Notch,
+        title: "Slides",
+        blurb: "Which faces the notch carries, and the order the wheel walks through them.",
+        draw: SettingsApp::page_notch_slides,
+    },
+    Page {
+        group: Group::Notch,
+        title: "Status",
+        blurb: "What you are working on right now. One line, plus a short list — not a notes \
+                app and not a backlog.",
+        draw: SettingsApp::page_notch_status,
+    },
+    Page {
+        group: Group::Notch,
+        title: "Wallpaper",
+        blurb: "One image you want put back in front of you now and then. Drag the preview to \
+                choose which part of it the panel shows.",
+        draw: SettingsApp::page_notch_wallpaper,
+    },
+    Page {
+        group: Group::Notch,
+        title: "Moving Text",
+        blurb: "How the notch sizes itself while it is showing the moving text. Everything here \
+                is an override — leave it on auto and the slide follows the notch's own settings.",
+        draw: SettingsApp::page_notch_marquee,
+    },
+    Page {
+        group: Group::Notch,
+        title: "Size & Place",
+        blurb: "How large the notch is when shut and when open, and where on which screen it \
+                sits.",
+        draw: SettingsApp::page_notch_layout,
+    },
+    Page {
+        group: Group::Notch,
+        title: "Appearance",
+        blurb: "Finish, accent and type for the notch itself.",
+        draw: SettingsApp::page_notch_look,
+    },
+    Page {
+        group: Group::Marquee,
+        title: "Overview",
+        blurb: "Strips of scrolling text pinned to the edges of the screen. Separate from the \
+                notch, and switched on and off separately.",
+        draw: SettingsApp::page_edge_overview,
+    },
+    Page {
+        group: Group::Marquee,
+        title: "Message",
+        blurb: "The words that scroll, and how far apart the repeats sit.",
+        draw: SettingsApp::page_edge_message,
+    },
+    Page {
+        group: Group::Marquee,
+        title: "Appearance",
+        blurb: "Type and colour for the strips.",
+        draw: SettingsApp::page_edge_look,
+    },
+    Page {
+        group: Group::Marquee,
+        title: "Motion",
+        blurb: "How fast the text travels, which way, and how the strips behave against other \
+                windows.",
+        draw: SettingsApp::page_edge_motion,
+    },
+    Page {
+        group: Group::App,
+        title: "Preferences",
+        blurb: "The settings window itself, and where your settings are kept.",
+        draw: SettingsApp::page_app_prefs,
+    },
+];
 
 pub struct SettingsApp {
     config: Arc<RwLock<AppConfig>>,
     temp_text: String,
-    active_tab: Tab,
+    /// Index into [`PAGES`].
+    active: usize,
+    /// Runs 0 to 1 while a page slides in. Held at 1 the rest of the time, so
+    /// a settled window does no animation work at all.
+    slide: f32,
+    /// Which way the incoming page travels: down the rail is +1, up is -1.
+    /// Direction is what makes the movement mean something rather than just
+    /// being decoration.
+    slide_dir: f32,
+    /// The palette in force last frame. The style is only rebuilt when this
+    /// changes, which is during a theme cross-fade and never otherwise.
+    palette: Option<theme::Palette>,
+    /// Decoded wallpaper, kept between frames so the preview does not re-read
+    /// the file sixty times a second.
+    preview: wallpaper::PreviewCache,
+}
+
+/// A strong ease-out — the same shape as `cubic-bezier(0.23, 1, 0.32, 1)`.
+///
+/// Almost all of the distance is covered in the first third of the duration,
+/// so the movement reads as a response to the click rather than as a wait.
+fn ease_out(t: f32) -> f32 {
+    if t >= 1.0 {
+        1.0
+    } else {
+        1.0 - 2f32.powf(-10.0 * t)
+    }
 }
 
 impl SettingsApp {
@@ -63,50 +203,20 @@ impl SettingsApp {
         setup_custom_fonts(&cc.egui_ctx);
 
         let mut style = (*cc.egui_ctx.style()).clone();
-        style.visuals.dark_mode = true;
         style.visuals.window_rounding = Rounding::same(10.0);
-        style.visuals.window_fill = colors::BG;
-        style.visuals.panel_fill = colors::BG;
-
         style.spacing.item_spacing = Vec2::new(8.0, 8.0);
         style.spacing.button_padding = Vec2::new(12.0, 6.0);
-
-        for widget_style in [
-            &mut style.visuals.widgets.noninteractive,
-            &mut style.visuals.widgets.inactive,
-            &mut style.visuals.widgets.hovered,
-            &mut style.visuals.widgets.active,
-            &mut style.visuals.widgets.open,
-        ] {
-            widget_style.rounding = Rounding::same(6.0);
-        }
-
-        style.visuals.widgets.noninteractive.bg_fill = colors::SURFACE;
-        style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, colors::DIVIDER);
-        style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, colors::TEXT_PRIMARY);
-
-        style.visuals.widgets.inactive.bg_fill = colors::SURFACE;
-        style.visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, colors::DIVIDER);
-        style.visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, colors::TEXT_PRIMARY);
-
-        style.visuals.widgets.hovered.bg_fill = colors::SURFACE_HOVER;
-        style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, colors::ACCENT);
-        style.visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, colors::TEXT_PRIMARY);
-
-        style.visuals.widgets.active.bg_fill = colors::ACCENT;
-        style.visuals.widgets.active.bg_stroke = Stroke::new(1.0, colors::ACCENT);
-        style.visuals.widgets.active.fg_stroke = Stroke::new(1.0, colors::BG);
-
-        style.visuals.selection.bg_fill = colors::ACCENT;
-        style.visuals.selection.stroke = Stroke::new(1.0, colors::ACCENT);
-
         cc.egui_ctx.set_style(style);
 
         let current_text = config.read().text.clone();
         Self {
             config,
             temp_text: current_text,
-            active_tab: Tab::Text,
+            active: 0,
+            slide: 1.0,
+            slide_dir: 1.0,
+            palette: None,
+            preview: wallpaper::PreviewCache::new(),
         }
     }
 
@@ -114,7 +224,7 @@ impl SettingsApp {
         ui.label(
             RichText::new(title)
                 .size(11.0)
-                .color(colors::TEXT_TERTIARY)
+                .color(theme::text_tertiary())
                 .strong(),
         );
         ui.add_space(10.0);
@@ -132,10 +242,10 @@ impl SettingsApp {
         help: Option<&str>,
         add_contents: impl FnOnce(&mut egui::Ui),
     ) {
-        ui.label(RichText::new(label).size(13.0).color(colors::TEXT_PRIMARY));
+        ui.label(RichText::new(label).size(13.0).color(theme::text_primary()));
         if let Some(h) = help {
             ui.add_space(2.0);
-            ui.label(RichText::new(h).size(11.0).color(colors::TEXT_SECONDARY));
+            ui.label(RichText::new(h).size(11.0).color(theme::text_secondary()));
         }
         ui.add_space(8.0);
         add_contents(ui);
@@ -144,7 +254,7 @@ impl SettingsApp {
 
     fn row_inline(ui: &mut egui::Ui, label: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new(label).size(13.0).color(colors::TEXT_PRIMARY));
+            ui.label(RichText::new(label).size(13.0).color(theme::text_primary()));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 add_contents(ui);
             });
@@ -152,71 +262,295 @@ impl SettingsApp {
         ui.add_space(12.0);
     }
 
-    fn draw_nav(ui: &mut egui::Ui, active_tab: &mut Tab) {
-        ui.add_space(6.0);
-        ui.label(
-            RichText::new("SECTIONS")
-                .size(10.0)
-                .color(colors::TEXT_TERTIARY)
-                .strong(),
-        );
-        ui.add_space(8.0);
+    /// The navigation rail.
+    ///
+    /// The selected row is painted as one pill that *slides* between rows
+    /// rather than being redrawn in place. That is why the pill's shape is
+    /// reserved before the loop and filled in after: its resting place is not
+    /// known until every row has been laid out, but it has to be painted
+    /// underneath the labels.
+    fn draw_nav(ui: &mut egui::Ui, active: &mut usize) {
+        let pill = ui.painter().add(egui::Shape::Noop);
+        let bar = ui.painter().add(egui::Shape::Noop);
+        let mut target: Option<Rect> = None;
 
-        let tabs = [
-            (Tab::Text, "Text"),
-            (Tab::Layout, "Layout"),
-            (Tab::Appearance, "Appearance"),
-            (Tab::Behavior, "Behavior"),
-        ];
-
-        for (tab, label) in tabs {
-            let selected = *active_tab == tab;
-            let width = ui.available_width();
-            let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 32.0), Sense::click());
-
-            if selected {
-                ui.painter()
-                    .rect_filled(rect, Rounding::same(6.0), colors::SURFACE);
-                let bar = Rect::from_min_size(rect.min, Vec2::new(2.5, rect.height()));
-                ui.painter()
-                    .rect_filled(bar, Rounding::same(2.0), colors::ACCENT);
-            } else if response.hovered() {
-                ui.painter()
-                    .rect_filled(rect, Rounding::same(6.0), colors::SURFACE_HOVER);
+        let mut group: Option<Group> = None;
+        for (index, page) in PAGES.iter().enumerate() {
+            if group != Some(page.group) {
+                ui.add_space(if group.is_some() { 16.0 } else { 2.0 });
+                ui.label(
+                    RichText::new(page.group.label())
+                        .size(9.5)
+                        .color(theme::text_tertiary())
+                        .strong(),
+                );
+                ui.add_space(7.0);
+                group = Some(page.group);
             }
 
-            let text_color = if selected {
-                colors::TEXT_PRIMARY
+            let selected = *active == index;
+            let width = ui.available_width();
+            let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 30.0), Sense::click());
+
+            if selected {
+                target = Some(rect);
             } else {
-                colors::TEXT_SECONDARY
+                // A wash that fades rather than snaps. Nobody will notice it;
+                // they would notice its absence as the rail feeling brittle.
+                let hover = ui
+                    .ctx()
+                    .animate_bool_with_time(response.id.with("hover"), response.hovered(), 0.11);
+                if hover > 0.001 {
+                    ui.painter().rect_filled(
+                        rect,
+                        Rounding::same(8.0),
+                        theme::surface_hover().gamma_multiply(hover),
+                    );
+                }
+            }
+
+            // Press feedback. A row that does not move under the finger feels
+            // like it did not hear the click.
+            let sink = if response.is_pointer_button_down_on() {
+                1.0
+            } else {
+                0.0
             };
 
             ui.painter().text(
-                rect.left_center() + Vec2::new(14.0, 0.0),
+                rect.left_center() + Vec2::new(15.0 + sink, 0.0),
                 Align2::LEFT_CENTER,
-                label,
+                page.title,
                 egui::FontId::proportional(13.0),
-                text_color,
+                if selected {
+                    theme::accent()
+                } else {
+                    theme::text_secondary()
+                },
             );
 
             if response.clicked() {
-                *active_tab = tab;
+                *active = index;
             }
 
-            ui.add_space(2.0);
+            ui.add_space(1.0);
         }
+
+        if let Some(target) = target {
+            // Only the vertical position is animated: the rows are all the
+            // same width and height, so nothing else has anywhere to travel.
+            let y = ui
+                .ctx()
+                .animate_value_with_time(egui::Id::new("nav_pill"), target.top(), 0.18);
+            let moved = Rect::from_min_size(egui::pos2(target.left(), y), target.size());
+
+            ui.painter()
+                .set(pill, egui::Shape::rect_filled(moved, Rounding::same(8.0), theme::accent_wash()));
+            ui.painter().set(
+                bar,
+                egui::Shape::rect_filled(
+                    Rect::from_min_size(
+                        moved.left_top() + Vec2::new(0.0, 7.0),
+                        Vec2::new(2.5, moved.height() - 14.0),
+                    ),
+                    Rounding::same(2.0),
+                    theme::accent(),
+                ),
+            );
+        }
+    }
+
+    /// The heading every page opens with. Uniform on purpose: the reader
+    /// should be able to tell where they are without reading, by shape alone.
+    fn page_header(ui: &mut egui::Ui, page: &Page) {
+        ui.label(
+            RichText::new(page.title)
+                .size(19.0)
+                .color(theme::text_primary())
+                .strong(),
+        );
+        ui.add_space(5.0);
+        ui.label(
+            RichText::new(page.blurb)
+                .size(11.5)
+                .color(theme::text_secondary()),
+        );
+        ui.add_space(6.0);
+        let rect = ui.max_rect();
+        let (line, _) = ui.allocate_exact_size(Vec2::new(rect.width(), 1.0), Sense::hover());
+        ui.painter()
+            .hline(line.x_range(), line.center().y, Stroke::new(1.0, theme::divider()));
+        ui.add_space(18.0);
+    }
+
+    // -- pages -----------------------------------------------------------
+    //
+    // Each one is a thin arrangement of the sections below it. Keeping the
+    // sections separate from the pages is what lets a section be moved to a
+    // different page without touching its body.
+
+    fn page_notch_overview(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_notch_basics(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_notch_slides(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_notch_deck(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_notch_status(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_status_now(ui, cx.cfg, cx.changed);
+        Self::sec_status_deck(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_notch_wallpaper(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_wallpaper(ui, cx.preview, cx.cfg, cx.changed);
+    }
+
+    fn page_notch_marquee(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_notch_marquee(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_notch_layout(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_notch_size(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_notch_place(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_notch_look(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_notch_look(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_edge_overview(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_edge_master(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_edge_edges(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_edge_margins(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_edge_message(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_marquee_message(ui, cx.temp_text, cx.cfg, cx.changed);
+    }
+
+    fn page_edge_look(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_edge_type(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_edge_color(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_edge_motion(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_edge_motion(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_edge_window(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_app_prefs(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::section_title(ui, "APPEARANCE");
+
+        Self::row_stacked(
+            ui,
+            "Window theme",
+            Some("System follows whatever Windows is set to."),
+            |ui| {
+                ui.horizontal(|ui| {
+                    for option in UiTheme::ALL {
+                        let picked = cx.cfg.ui_theme == option;
+                        if Self::segment(ui, option.label(), picked).clicked() {
+                            cx.cfg.ui_theme = option;
+                            *cx.changed = true;
+                        }
+                    }
+                });
+            },
+        );
+
+        Self::divider(ui);
+        Self::section_title(ui, "YOUR SETTINGS");
+
+        ui.label(
+            RichText::new("Everything on these pages is saved here, as soon as you change it.")
+                .size(11.0)
+                .color(theme::text_secondary()),
+        );
+        ui.add_space(8.0);
+
+        let path = AppConfig::config_path();
+        let shown = path.display().to_string();
+        let mut readonly = shown.as_str();
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut readonly)
+                    .desired_width(ui.available_width() - 92.0)
+                    .font(egui::FontId::proportional(11.0)),
+            );
+            if ui
+                .button("Copy path")
+                .on_hover_text("Copy the settings file path to the clipboard")
+                .clicked()
+            {
+                ui.ctx().copy_text(shown.clone());
+            }
+        });
+    }
+
+    /// One cell of a segmented control: a button that stays lit when picked.
+    ///
+    /// Written by hand rather than reached for as a `SelectableLabel` so the
+    /// picked cell can carry the accent rather than egui's selection blue.
+    fn segment(ui: &mut egui::Ui, label: &str, picked: bool) -> egui::Response {
+        let galley = ui.painter().layout_no_wrap(
+            label.to_owned(),
+            egui::FontId::proportional(12.0),
+            theme::text_primary(),
+        );
+        let size = Vec2::new(galley.size().x + 26.0, 28.0);
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+        let lit = ui
+            .ctx()
+            .animate_bool_with_time(response.id.with("lit"), picked, 0.14);
+        let hover = ui
+            .ctx()
+            .animate_bool_with_time(response.id.with("hover"), response.hovered() && !picked, 0.11);
+
+        ui.painter().rect_filled(
+            rect,
+            Rounding::same(8.0),
+            theme::surface().gamma_multiply(1.0 - lit),
+        );
+        if hover > 0.001 {
+            ui.painter().rect_filled(
+                rect,
+                Rounding::same(8.0),
+                theme::surface_hover().gamma_multiply(hover),
+            );
+        }
+        if lit > 0.001 {
+            ui.painter()
+                .rect_filled(rect, Rounding::same(8.0), theme::accent().gamma_multiply(lit));
+        }
+
+        let text = if lit > 0.5 {
+            theme::on_accent()
+        } else {
+            theme::text_secondary()
+        };
+        ui.painter()
+            .text(rect.center(), Align2::CENTER_CENTER, label, egui::FontId::proportional(12.0), text);
+
+        response
     }
 
     fn draw_preview_bar(ui: &mut egui::Ui, cfg: &AppConfig) {
         ui.horizontal(|ui| {
             let (dot_rect, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), Sense::hover());
             ui.painter()
-                .circle_filled(dot_rect.center(), 3.0, colors::ACCENT);
+                .circle_filled(dot_rect.center(), 3.0, theme::accent());
 
             ui.label(
                 RichText::new("PREVIEW")
                     .size(10.0)
-                    .color(colors::TEXT_TERTIARY)
+                    .color(theme::text_tertiary())
                     .strong(),
             );
             ui.add_space(14.0);
@@ -258,7 +592,7 @@ impl SettingsApp {
         });
     }
 
-    fn tab_text(
+    fn sec_marquee_message(
         ui: &mut egui::Ui,
         temp_text: &mut String,
         cfg: &mut AppConfig,
@@ -288,7 +622,7 @@ impl SettingsApp {
         ui.label(
             RichText::new("Presets")
                 .size(12.0)
-                .color(colors::TEXT_SECONDARY),
+                .color(theme::text_secondary()),
         );
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -320,38 +654,182 @@ impl SettingsApp {
             "Repetition Spacing",
             Some("Space between repeated copies of the phrase."),
             |ui| {
+                // Padding *between* repeated copies, so it does nothing at
+                // all while the line is held still.
                 if ui
-                    .add(egui::Slider::new(&mut cfg.phrase_spacing, 1..=50).text("spaces"))
+                    .add_enabled(
+                        cfg.marquee.scroll,
+                        egui::Slider::new(&mut cfg.phrase_spacing, 1..=50).text("spaces"),
+                    )
                     .changed()
                 {
                     *changed = true;
                 }
             },
         );
+
+        ui.add_space(18.0);
     }
 
-    fn tab_layout(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
-        Self::section_title(ui, "ACTIVE EDGES");
-        egui::Grid::new("edge_grid")
-            .num_columns(2)
-            .spacing([24.0, 10.0])
-            .show(ui, |ui| {
-                if ui.checkbox(&mut cfg.edges.top, "Top").changed() {
-                    *changed = true;
-                }
-                if ui.checkbox(&mut cfg.edges.right, "Right").changed() {
-                    *changed = true;
-                }
-                ui.end_row();
+    fn sec_notch_marquee(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::row_stacked(
+            ui,
+            "Motion",
+            Some("Off, the message is held still and centred instead of scrolling."),
+            |ui| {
+                ui.horizontal(|ui| {
+                    if ui
+                        .selectable_label(cfg.marquee.scroll, "Scrolling")
+                        .clicked()
+                        && !cfg.marquee.scroll
+                    {
+                        cfg.marquee.scroll = true;
+                        *changed = true;
+                    }
+                    if ui
+                        .selectable_label(!cfg.marquee.scroll, "Hold still")
+                        .clicked()
+                        && cfg.marquee.scroll
+                    {
+                        cfg.marquee.scroll = false;
+                        *changed = true;
+                    }
+                });
+            },
+        );
 
-                if ui.checkbox(&mut cfg.edges.bottom, "Bottom").changed() {
+        Self::row_stacked(
+            ui,
+            "Collapsed Pill",
+            Some("The resting notch, when this is the slide it came to rest on."),
+            |ui| {
+                Self::size_pair(
+                    ui,
+                    &mut cfg.marquee.collapsed_width,
+                    &mut cfg.marquee.collapsed_height,
+                    900,
+                    300,
+                    changed,
+                );
+            },
+        );
+
+        Self::row_stacked(
+            ui,
+            "Open Panel",
+            Some("A long line usually wants more width and less height than a clock does."),
+            |ui| {
+                Self::size_pair(
+                    ui,
+                    &mut cfg.marquee.panel_width,
+                    &mut cfg.marquee.panel_height,
+                    2200,
+                    900,
+                    changed,
+                );
+            },
+        );
+
+        Self::row_stacked(
+            ui,
+            "Type Size",
+            Some("Zero follows the built-in size for each state."),
+            |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Panel")
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut cfg.marquee.font_size)
+                                .range(0.0..=120.0)
+                                .speed(0.5)
+                                .custom_formatter(|v, _| Self::size_text(v)),
+                        )
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                    ui.add_space(10.0);
+                    ui.label(
+                        RichText::new("Pill")
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut cfg.marquee.pill_font_size)
+                                .range(0.0..=64.0)
+                                .speed(0.5)
+                                .custom_formatter(|v, _| Self::size_text(v)),
+                        )
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                    ui.add_space(12.0);
+                    if ui.small_button("Reset all").clicked() {
+                        cfg.marquee = Default::default();
+                        *changed = true;
+                    }
+                });
+            },
+        );
+
+        if !cfg.notch.slides.contains(&SlideKind::Marquee) {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("This slide is not in the deck.")
+                        .size(11.0)
+                        .color(theme::text_secondary()),
+                );
+                if ui.small_button("Add it").clicked() {
+                    cfg.notch.slides.push(SlideKind::Marquee);
                     *changed = true;
                 }
-                if ui.checkbox(&mut cfg.edges.left, "Left").changed() {
-                    *changed = true;
-                }
-                ui.end_row();
             });
+        }
+    }
+
+    fn sec_edge_master(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "MASTER SWITCH");
+        if ui
+            .checkbox(&mut cfg.overlay_enabled, "Show the edge marquee")
+            .changed()
+        {
+            *changed = true;
+        }
+    }
+
+    fn sec_edge_edges(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "ACTIVE EDGES");
+        // Greyed out rather than left looking live but inert: it should be
+        // obvious which control is in charge.
+        ui.add_enabled_ui(cfg.overlay_enabled, |ui| {
+            egui::Grid::new("edge_grid")
+                .num_columns(2)
+                .spacing([24.0, 10.0])
+                .show(ui, |ui| {
+                    if ui.checkbox(&mut cfg.edges.top, "Top").changed() {
+                        *changed = true;
+                    }
+                    if ui.checkbox(&mut cfg.edges.right, "Right").changed() {
+                        *changed = true;
+                    }
+                    ui.end_row();
+
+                    if ui.checkbox(&mut cfg.edges.bottom, "Bottom").changed() {
+                        *changed = true;
+                    }
+                    if ui.checkbox(&mut cfg.edges.left, "Left").changed() {
+                        *changed = true;
+                    }
+                    ui.end_row();
+                });
+        });
 
         ui.add_space(16.0);
         Self::row_stacked(ui, "Strip Thickness", None, |ui| {
@@ -362,14 +840,14 @@ impl SettingsApp {
                 *changed = true;
             }
         });
+    }
 
-        Self::divider(ui);
-
+    fn sec_edge_margins(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
         Self::section_title(ui, "CLEARANCE MARGINS");
         ui.label(
             RichText::new("Padding to avoid overlapping window controls or the taskbar.")
                 .size(11.0)
-                .color(colors::TEXT_SECONDARY),
+                .color(theme::text_secondary()),
         );
         ui.add_space(10.0);
 
@@ -380,7 +858,7 @@ impl SettingsApp {
                 ui.label(
                     RichText::new("Top")
                         .size(12.0)
-                        .color(colors::TEXT_SECONDARY),
+                        .color(theme::text_secondary()),
                 );
                 if ui
                     .add(egui::DragValue::new(&mut cfg.padding.top).range(0..=800))
@@ -391,7 +869,7 @@ impl SettingsApp {
                 ui.label(
                     RichText::new("Right")
                         .size(12.0)
-                        .color(colors::TEXT_SECONDARY),
+                        .color(theme::text_secondary()),
                 );
                 if ui
                     .add(egui::DragValue::new(&mut cfg.padding.right).range(0..=800))
@@ -404,7 +882,7 @@ impl SettingsApp {
                 ui.label(
                     RichText::new("Bottom")
                         .size(12.0)
-                        .color(colors::TEXT_SECONDARY),
+                        .color(theme::text_secondary()),
                 );
                 if ui
                     .add(egui::DragValue::new(&mut cfg.padding.bottom).range(0..=800))
@@ -415,7 +893,7 @@ impl SettingsApp {
                 ui.label(
                     RichText::new("Left")
                         .size(12.0)
-                        .color(colors::TEXT_SECONDARY),
+                        .color(theme::text_secondary()),
                 );
                 if ui
                     .add(egui::DragValue::new(&mut cfg.padding.left).range(0..=800))
@@ -427,7 +905,7 @@ impl SettingsApp {
             });
     }
 
-    fn tab_appearance(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+    fn sec_edge_type(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
         Self::section_title(ui, "TYPOGRAPHY");
 
         Self::row_inline(ui, "Font Family", |ui| {
@@ -474,8 +952,9 @@ impl SettingsApp {
         });
 
         ui.add_space(6.0);
-        Self::divider(ui);
+    }
 
+    fn sec_edge_color(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
         Self::section_title(ui, "COLOR");
 
         Self::row_inline(ui, "Text Color", |ui| {
@@ -515,7 +994,7 @@ impl SettingsApp {
         });
     }
 
-    fn tab_behavior(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+    fn sec_edge_motion(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
         Self::section_title(ui, "MOTION");
 
         Self::row_stacked(ui, "Scroll Speed", None, |ui| {
@@ -532,9 +1011,9 @@ impl SettingsApp {
                 *changed = true;
             }
         });
+    }
 
-        Self::divider(ui);
-
+    fn sec_edge_window(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
         Self::section_title(ui, "OVERLAY BEHAVIOR");
 
         Self::row_inline(ui, "Always On Top", |ui| {
@@ -557,26 +1036,707 @@ impl SettingsApp {
             }
         });
     }
+
+    fn sec_notch_basics(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        if ui
+            .checkbox(&mut cfg.notch.enabled, "Show the notch")
+            .changed()
+        {
+            *changed = true;
+        }
+        ui.add_space(6.0);
+        if ui
+            .checkbox(&mut cfg.notch.always_on_top, "Keep above other windows")
+            .changed()
+        {
+            *changed = true;
+        }
+        ui.add_space(6.0);
+        if ui
+            .checkbox(&mut cfg.notch.click_through, "Let clicks pass through")
+            .on_hover_text(
+                "Clicks go to the window underneath instead of the notch. \
+                 Hovering and the scroll wheel still work.",
+            )
+            .changed()
+        {
+            *changed = true;
+        }
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(
+                "Press the left and right mouse buttons together with the cursor over the \
+                 notch to switch this on or off without coming back here. It has to be a \
+                 gesture: once clicks pass through, an ordinary click can no longer reach \
+                 the notch to undo it.",
+            )
+            .size(11.0)
+            .color(theme::text_secondary()),
+        );
+        ui.add_space(6.0);
+        if ui
+            .checkbox(
+                &mut cfg.notch.scroll_to_switch,
+                "Scroll wheel changes slides",
+            )
+            .changed()
+        {
+            *changed = true;
+        }
+    }
+
+    fn sec_notch_deck(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        let mut move_up: Option<usize> = None;
+        let mut move_down: Option<usize> = None;
+        let mut remove: Option<usize> = None;
+        let len = cfg.notch.slides.len();
+
+        for (i, slide) in cfg.notch.slides.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!("{}.", i + 1))
+                        .size(12.0)
+                        .color(theme::text_tertiary()),
+                );
+                ui.label(
+                    RichText::new(slide.label())
+                        .size(13.0)
+                        .color(theme::text_primary()),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    // Removing the last slide would leave nothing to show.
+                    if ui
+                        .add_enabled(len > 1, egui::Button::new("Remove"))
+                        .clicked()
+                    {
+                        remove = Some(i);
+                    }
+                    if ui.add_enabled(i + 1 < len, egui::Button::new("▼")).clicked() {
+                        move_down = Some(i);
+                    }
+                    if ui.add_enabled(i > 0, egui::Button::new("▲")).clicked() {
+                        move_up = Some(i);
+                    }
+                });
+            });
+            ui.add_space(4.0);
+        }
+
+        if let Some(i) = move_up {
+            cfg.notch.slides.swap(i, i - 1);
+            *changed = true;
+        }
+        if let Some(i) = move_down {
+            cfg.notch.slides.swap(i, i + 1);
+            *changed = true;
+        }
+        if let Some(i) = remove {
+            cfg.notch.slides.remove(i);
+            *changed = true;
+        }
+
+        let missing: Vec<SlideKind> = SlideKind::ALL
+            .iter()
+            .copied()
+            .filter(|k| !cfg.notch.slides.contains(k))
+            .collect();
+
+        if !missing.is_empty() {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("Add")
+                        .size(12.0)
+                        .color(theme::text_secondary()),
+                );
+                for kind in missing {
+                    if ui.button(kind.label()).clicked() {
+                        cfg.notch.slides.push(kind);
+                        *changed = true;
+                    }
+                }
+            });
+        }
+
+        if cfg.notch.active_slide >= cfg.notch.slides.len().max(1) {
+            cfg.notch.active_slide = 0;
+        }
+    }
+
+    fn sec_notch_size(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "SIZE");
+
+        Self::row_stacked(ui, "Collapsed", Some("The resting pill."), |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("W")
+                        .size(12.0)
+                        .color(theme::text_secondary()),
+                );
+                if ui
+                    .add(egui::DragValue::new(&mut cfg.notch.collapsed_width).range(60..=900))
+                    .changed()
+                {
+                    *changed = true;
+                }
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new("H")
+                        .size(12.0)
+                        .color(theme::text_secondary()),
+                );
+                if ui
+                    .add(egui::DragValue::new(&mut cfg.notch.collapsed_height).range(18..=120))
+                    .changed()
+                {
+                    *changed = true;
+                }
+            });
+        });
+
+        Self::row_stacked(ui, "Expanded", Some("The panel it opens into."), |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("W")
+                        .size(12.0)
+                        .color(theme::text_secondary()),
+                );
+                if ui
+                    .add(egui::DragValue::new(&mut cfg.notch.expanded_width).range(320..=2200))
+                    .changed()
+                {
+                    *changed = true;
+                }
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new("H")
+                        .size(12.0)
+                        .color(theme::text_secondary()),
+                );
+                if ui
+                    .add(egui::DragValue::new(&mut cfg.notch.expanded_height).range(120..=900))
+                    .changed()
+                {
+                    *changed = true;
+                }
+            });
+        });
+    }
+
+    fn sec_notch_place(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "PLACEMENT");
+
+        Self::row_inline(ui, "Monitor", |ui| {
+            let monitors = crate::notch::window::monitor_rects();
+            let current = cfg.notch.monitor_index.min(monitors.len().saturating_sub(1));
+            let label = monitors
+                .get(current)
+                .map(|m| {
+                    format!(
+                        "Display {} — {}x{}",
+                        current + 1,
+                        m.right - m.left,
+                        m.bottom - m.top
+                    )
+                })
+                .unwrap_or_else(|| "Display 1".to_string());
+
+            egui::ComboBox::from_id_salt("notch_monitor_combo")
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    for (i, m) in monitors.iter().enumerate() {
+                        let text = format!(
+                            "Display {} — {}x{}",
+                            i + 1,
+                            m.right - m.left,
+                            m.bottom - m.top
+                        );
+                        if ui
+                            .selectable_value(&mut cfg.notch.monitor_index, i, text)
+                            .clicked()
+                        {
+                            *changed = true;
+                        }
+                    }
+                });
+        });
+
+        Self::row_inline(ui, "Align", |ui| {
+            for (align, label) in [
+                (NotchAlign::Right, "Right"),
+                (NotchAlign::Center, "Center"),
+                (NotchAlign::Left, "Left"),
+            ] {
+                if ui
+                    .selectable_value(&mut cfg.notch.align, align, label)
+                    .clicked()
+                {
+                    *changed = true;
+                }
+            }
+        });
+
+        Self::row_stacked(
+            ui,
+            "Offset",
+            Some("Y of 0 fuses the notch to the bezel; anything higher lets it float."),
+            |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("X")
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
+                    if ui
+                        .add(egui::DragValue::new(&mut cfg.notch.offset_x).range(-2000..=2000))
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                    ui.add_space(10.0);
+                    ui.label(
+                        RichText::new("Y")
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
+                    if ui
+                        .add(egui::DragValue::new(&mut cfg.notch.offset_y).range(0..=1200))
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                });
+            },
+        );
+    }
+
+    fn sec_notch_look(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "LOOK & FEEL");
+
+        Self::row_stacked(
+            ui,
+            "Theme",
+            Some("Sets the whole panel — surface, type ramp and shadow together."),
+            |ui| {
+                ui.horizontal(|ui| {
+                    for theme in NotchTheme::ALL {
+                        let selected = cfg.notch.theme == theme;
+                        if ui.selectable_label(selected, theme.label()).clicked() && !selected {
+                            cfg.notch.theme = theme;
+                            // The panel colour is the one theme value the user
+                            // can also set by hand, so switching theme resets
+                            // it to that theme's own surface rather than
+                            // leaving a dark slab wearing light type.
+                            cfg.notch.surface = theme.default_surface();
+                            *changed = true;
+                        }
+                    }
+                });
+            },
+        );
+
+        Self::color_row(ui, "Accent", &mut cfg.notch.accent, changed);
+        Self::color_row(ui, "Panel", &mut cfg.notch.surface, changed);
+
+        Self::row_inline(ui, "Font", |ui| {
+            let fonts = [
+                "Plus Jakarta Sans",
+                "Segoe UI",
+                "Consolas",
+                "Arial",
+                "Microsoft YaHei",
+            ];
+            egui::ComboBox::from_id_salt("notch_font_combo")
+                .selected_text(cfg.notch.font_family.as_str())
+                .show_ui(ui, |ui| {
+                    for f in fonts {
+                        if ui
+                            .selectable_value(&mut cfg.notch.font_family, f.to_string(), f)
+                            .clicked()
+                        {
+                            *changed = true;
+                        }
+                    }
+                });
+        });
+
+        if ui
+            .checkbox(&mut cfg.notch.clock_24h, "24-hour clock")
+            .changed()
+        {
+            *changed = true;
+        }
+        ui.add_space(14.0);
+
+        Self::row_stacked(
+            ui,
+            "Collapse Delay",
+            Some("Grace period after the cursor leaves, so brushing past does not slam it shut."),
+            |ui| {
+                if ui
+                    .add(egui::Slider::new(&mut cfg.notch.collapse_delay_ms, 0..=1500).text("ms"))
+                    .changed()
+                {
+                    *changed = true;
+                }
+            },
+        );
+    }
+
+    fn sec_status_now(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "THE ONE LINE");
+        ui.label(
+            RichText::new(
+                "One line for what you are actually doing. Not a notes app, not a backlog — \
+                 click the line inside the open notch to change it without coming here.",
+            )
+            .size(11.0)
+            .color(theme::text_secondary()),
+        );
+        ui.add_space(14.0);
+
+        Self::row_stacked(ui, "Heading", Some("Small label above the line."), |ui| {
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut cfg.status.heading)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("TODAY"),
+                )
+                .changed()
+            {
+                *changed = true;
+            }
+        });
+
+        Self::row_stacked(ui, "Focus", None, |ui| {
+            if ui
+                .add(
+                    egui::TextEdit::multiline(&mut cfg.status.focus)
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(2)
+                        .hint_text("What are you working on?"),
+                )
+                .changed()
+            {
+                *changed = true;
+            }
+        });
+    }
+
+    fn sec_status_deck(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "ON DECK");
+        ui.label(
+            RichText::new("The short list beside it. Keep it to today.")
+                .size(11.0)
+                .color(theme::text_secondary()),
+        );
+        ui.add_space(10.0);
+
+        let mut remove: Option<usize> = None;
+        for (i, item) in cfg.status.items.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut item.done, "").changed() {
+                    *changed = true;
+                }
+                // Right-to-left so the button claims its own width first and
+                // the field takes exactly what is left. Subtracting a guessed
+                // button width instead is what pushed it off the panel.
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button("Remove").clicked() {
+                        remove = Some(i);
+                    }
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(&mut item.text)
+                                .desired_width(ui.available_width())
+                                .hint_text("Something else today"),
+                        )
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                });
+            });
+            ui.add_space(4.0);
+        }
+
+        if let Some(i) = remove {
+            cfg.status.items.remove(i);
+            *changed = true;
+        }
+
+        ui.add_space(6.0);
+        // Past about six the list stops fitting the panel and starts spilling
+        // into a "+N more" line, which is a worse read than a shorter list.
+        if ui
+            .add_enabled(cfg.status.items.len() < 8, egui::Button::new("Add item"))
+            .clicked()
+        {
+            cfg.status.items.push(StatusItem::new(""));
+            *changed = true;
+        }
+    }
+
+    fn sec_wallpaper(
+        ui: &mut egui::Ui,
+        cache: &mut wallpaper::PreviewCache,
+        cfg: &mut AppConfig,
+        changed: &mut bool,
+    ) {
+        Self::row_stacked(ui, "Image", Some("PNG, JPG, BMP, GIF or WebP."), |ui| {
+            // Buttons first, in right-to-left, so the path field gets exactly
+            // the width that is actually left over. Subtracting a guessed
+            // button width is what pushed controls off the panel before.
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .add_enabled(cfg.wallpaper.has_image(), egui::Button::new("Clear"))
+                    .clicked()
+                {
+                    cfg.wallpaper.path.clear();
+                    *changed = true;
+                }
+                if ui.button("Browse...").clicked() {
+                    if let Some(picked) = filedlg::pick_image(&cfg.wallpaper.path) {
+                        cfg.wallpaper.path = picked;
+                        // A new picture invalidates the old framing.
+                        cfg.wallpaper.focus_x = 0.5;
+                        cfg.wallpaper.focus_y = 0.5;
+                        cfg.wallpaper.zoom = 1.0;
+                        *changed = true;
+                    }
+                }
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(&mut cfg.wallpaper.path)
+                            .desired_width(ui.available_width())
+                            .hint_text("C:\\Users\\...\\reminder.jpg"),
+                    )
+                    .changed()
+                {
+                    *changed = true;
+                }
+            });
+        });
+
+        Self::row_stacked(
+            ui,
+            "Panel Size",
+            Some("How big the notch opens on this slide. \"auto\" follows the panel default."),
+            |ui| {
+                Self::size_pair(
+                    ui,
+                    &mut cfg.wallpaper.panel_width,
+                    &mut cfg.wallpaper.panel_height,
+                    2200,
+                    900,
+                    changed,
+                );
+            },
+        );
+
+        let panel_w = if cfg.wallpaper.panel_width > 0 {
+            cfg.wallpaper.panel_width
+        } else {
+            cfg.notch.expanded_width
+        } as f32;
+        let panel_h = if cfg.wallpaper.panel_height > 0 {
+            cfg.wallpaper.panel_height
+        } else {
+            cfg.notch.expanded_height
+        } as f32;
+
+        Self::row_stacked(
+            ui,
+            "Framing",
+            Some("Drag to reposition. This is exactly what the open notch will show."),
+            |ui| {
+                if wallpaper::preview(
+                    ui,
+                    cache,
+                    &mut cfg.wallpaper,
+                    panel_w / panel_h.max(1.0),
+                    "Choose an image to see it framed here",
+                ) {
+                    *changed = true;
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Zoom").size(12.0).color(theme::text_secondary()));
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut cfg.wallpaper.zoom, 1.0..=4.0)
+                                .fixed_decimals(2)
+                                .suffix("x"),
+                        )
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                    if ui.small_button("Reset").clicked() {
+                        cfg.wallpaper.focus_x = 0.5;
+                        cfg.wallpaper.focus_y = 0.5;
+                        cfg.wallpaper.zoom = 1.0;
+                        *changed = true;
+                    }
+                });
+            },
+        );
+
+        Self::row_stacked(
+            ui,
+            "Caption",
+            Some("Drawn over the photo, in the open panel and in the collapsed pill."),
+            |ui| {
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(&mut cfg.wallpaper.caption)
+                            .desired_width(f32::INFINITY)
+                            .hint_text("Why this is on your screen"),
+                    )
+                    .changed()
+                {
+                    *changed = true;
+                }
+            },
+        );
+
+        if !cfg.notch.slides.contains(&SlideKind::Wallpaper) {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("This slide is not in the deck.")
+                        .size(11.0)
+                        .color(theme::text_secondary()),
+                );
+                if ui.small_button("Add it").clicked() {
+                    cfg.notch.slides.push(SlideKind::Wallpaper);
+                    *changed = true;
+                }
+            });
+        }
+    }
+
+    /// A width/height pair of override fields, with the "auto" formatting and
+    /// the inherit button they always come with.
+    fn size_pair(
+        ui: &mut egui::Ui,
+        width: &mut u32,
+        height: &mut u32,
+        max_w: u32,
+        max_h: u32,
+        changed: &mut bool,
+    ) {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("W").size(12.0).color(theme::text_secondary()));
+            if ui
+                .add(
+                    egui::DragValue::new(width)
+                        .range(0..=max_w)
+                        .speed(2.0)
+                        .custom_formatter(|v, _| Self::size_text(v)),
+                )
+                .changed()
+            {
+                *changed = true;
+            }
+            ui.add_space(10.0);
+            ui.label(RichText::new("H").size(12.0).color(theme::text_secondary()));
+            if ui
+                .add(
+                    egui::DragValue::new(height)
+                        .range(0..=max_h)
+                        .speed(2.0)
+                        .custom_formatter(|v, _| Self::size_text(v)),
+                )
+                .changed()
+            {
+                *changed = true;
+            }
+            ui.add_space(12.0);
+            if ui.small_button("Match notch").clicked() {
+                *width = 0;
+                *height = 0;
+                *changed = true;
+            }
+        });
+    }
+
+    fn color_row(
+        ui: &mut egui::Ui,
+        label: &str,
+        value: &mut [f32; 4],
+        changed: &mut bool,
+    ) {
+        Self::row_inline(ui, label, |ui| {
+            let mut c = Color32::from_rgba_unmultiplied(
+                (value[0] * 255.0) as u8,
+                (value[1] * 255.0) as u8,
+                (value[2] * 255.0) as u8,
+                (value[3] * 255.0) as u8,
+            );
+            if ui.color_edit_button_srgba(&mut c).changed() {
+                *value = [
+                    c.r() as f32 / 255.0,
+                    c.g() as f32 / 255.0,
+                    c.b() as f32 / 255.0,
+                    c.a() as f32 / 255.0,
+                ];
+                *changed = true;
+            }
+        });
+    }
+
+    fn size_text(value: f64) -> String {
+        if value <= 0.0 {
+            "auto".to_string()
+        } else {
+            format!("{}", value.round() as i64)
+        }
+    }
 }
 
 impl eframe::App for SettingsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if ctx.input(|i| i.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
 
         if crate::tray::SHOW_REQUESTED.swap(false, std::sync::atomic::Ordering::SeqCst) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
 
         let mut config_changed = false;
         let mut cfg_guard = self.config.write();
 
+        // -- theme -------------------------------------------------------
+        //
+        // Switching theme cross-fades rather than snapping. A fifth of a
+        // second is long enough to read as one surface changing colour and
+        // short enough that nobody waits for it.
+        let want_dark = theme::resolve(cfg_guard.ui_theme, ctx);
+        let blend = ctx.animate_bool_with_time(egui::Id::new("ui_theme"), want_dark, 0.22);
+        let palette = theme::Palette::lerp(theme::LIGHT, theme::DARK, blend);
+        theme::set(palette);
+        if self.palette != Some(palette) {
+            theme::apply_style(ctx, palette);
+            self.palette = Some(palette);
+        }
+
+        // -- page transition ---------------------------------------------
+        let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
+        if self.slide < 1.0 {
+            self.slide = (self.slide + dt / 0.2).min(1.0);
+            ctx.request_repaint();
+        }
+        let travel = ease_out(self.slide);
+
         egui::TopBottomPanel::top("header")
             .frame(
                 Frame::default()
-                    .fill(colors::BG)
+                    .fill(theme::bg())
                     .inner_margin(Margin::symmetric(24.0, 14.0)),
             )
             .show(ctx, |ui| {
@@ -585,13 +1745,13 @@ impl eframe::App for SettingsApp {
                         ui.label(
                             RichText::new("MovingText")
                                 .size(16.0)
-                                .color(colors::TEXT_PRIMARY)
+                                .color(theme::text_primary())
                                 .strong(),
                         );
                         ui.label(
                             RichText::new("Your reminders, always in motion")
                                 .size(11.0)
-                                .color(colors::TEXT_SECONDARY),
+                                .color(theme::text_secondary()),
                         );
                     });
 
@@ -601,7 +1761,27 @@ impl eframe::App for SettingsApp {
                             .on_hover_text("Hide the settings window to the system tray")
                             .clicked()
                         {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                        }
+
+                        ui.add_space(6.0);
+
+                        // The theme also lives on the Preferences page, which
+                        // is its proper home. It is repeated here because it
+                        // is the one setting people reach for out of habit
+                        // rather than intent, and hunting for it is friction.
+                        let next = match cfg_guard.ui_theme {
+                            UiTheme::System => UiTheme::Light,
+                            UiTheme::Light => UiTheme::Dark,
+                            UiTheme::Dark => UiTheme::System,
+                        };
+                        if ui
+                            .button(RichText::new(cfg_guard.ui_theme.label()).size(12.0))
+                            .on_hover_text(format!("Switch to {}", next.label().to_lowercase()))
+                            .clicked()
+                        {
+                            cfg_guard.ui_theme = next;
+                            config_changed = true;
                         }
                     });
                 });
@@ -610,57 +1790,94 @@ impl eframe::App for SettingsApp {
                 ui.painter().hline(
                     rect.x_range(),
                     rect.bottom(),
-                    Stroke::new(1.0, colors::DIVIDER),
+                    Stroke::new(1.0, theme::divider()),
                 );
             });
 
-        egui::TopBottomPanel::bottom("preview")
-            .exact_height(52.0)
-            .frame(
-                Frame::default()
-                    .fill(colors::BG)
-                    .inner_margin(Margin::symmetric(24.0, 8.0)),
-            )
-            .show(ctx, |ui| {
-                let rect = ui.max_rect();
-                ui.painter().hline(
-                    rect.x_range(),
-                    rect.top(),
-                    Stroke::new(1.0, colors::DIVIDER),
-                );
-                ui.add_space(4.0);
-                Self::draw_preview_bar(ui, &cfg_guard);
-            });
+        // The preview strip only means anything on the edge-marquee pages, so
+        // it is only there for them — and it grows and shrinks rather than
+        // appearing, which keeps the content below from jumping.
+        let wants_preview = PAGES[self.active].group == Group::Marquee;
+        let strip = ctx.animate_bool_with_time(egui::Id::new("preview_strip"), wants_preview, 0.18)
+            * 52.0;
+        if strip > 0.5 {
+            egui::TopBottomPanel::bottom("preview")
+                .exact_height(strip)
+                .frame(
+                    Frame::default()
+                        .fill(theme::bg())
+                        .inner_margin(Margin::symmetric(24.0, 8.0)),
+                )
+                .show(ctx, |ui| {
+                    ui.set_clip_rect(ui.max_rect());
+                    let rect = ui.max_rect();
+                    ui.painter().hline(
+                        rect.x_range(),
+                        rect.top(),
+                        Stroke::new(1.0, theme::divider()),
+                    );
+                    ui.add_space(4.0);
+                    Self::draw_preview_bar(ui, &cfg_guard);
+                });
+        }
 
         egui::SidePanel::left("nav")
-            .exact_width(164.0)
+            .exact_width(186.0)
             .resizable(false)
             .frame(
                 Frame::default()
-                    .fill(colors::SIDEBAR_BG)
-                    .inner_margin(Margin::symmetric(10.0, 18.0)),
+                    .fill(theme::sidebar())
+                    .inner_margin(Margin::symmetric(12.0, 16.0)),
             )
             .show(ctx, |ui| {
-                Self::draw_nav(ui, &mut self.active_tab);
+                let before = self.active;
+                Self::draw_nav(ui, &mut self.active);
+                if self.active != before {
+                    // Direction carries meaning: pages entering from the right
+                    // are further down the rail. Without it the movement is
+                    // decoration; with it, it is a small map.
+                    self.slide_dir = if self.active > before { 1.0 } else { -1.0 };
+                    self.slide = 0.0;
+                }
             });
 
+        // Long lines are hard to read and right-aligned controls end up an
+        // arm's length from their labels, so the column is capped and centred
+        // however wide the window gets.
+        let column = 720.0;
+        let gutter = (((ctx.available_rect().width() - column) * 0.5).max(0.0) + 30.0).floor();
+        // The page slides in horizontally by moving its own margins. Doing it
+        // this way rather than by translating a layer keeps every widget's
+        // interaction rect where it is painted.
+        let shift = (1.0 - travel) * 24.0 * self.slide_dir;
+
         egui::CentralPanel::default()
-            .frame(
-                Frame::default()
-                    .fill(colors::BG)
-                    .inner_margin(Margin::symmetric(28.0, 22.0)),
-            )
+            .frame(Frame::default().fill(theme::bg()).inner_margin(Margin {
+                left: gutter + shift,
+                right: (gutter - shift).max(0.0),
+                top: 22.0,
+                bottom: 24.0,
+            }))
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| match self.active_tab {
-                    Tab::Text => {
-                        Self::tab_text(ui, &mut self.temp_text, &mut cfg_guard, &mut config_changed)
-                    }
-                    Tab::Layout => Self::tab_layout(ui, &mut cfg_guard, &mut config_changed),
-                    Tab::Appearance => {
-                        Self::tab_appearance(ui, &mut cfg_guard, &mut config_changed)
-                    }
-                    Tab::Behavior => Self::tab_behavior(ui, &mut cfg_guard, &mut config_changed),
-                });
+                egui::ScrollArea::vertical()
+                    // Without this the content column shrinks to its widest
+                    // widget, so right-aligned controls drift and rows jump
+                    // as pages change.
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.multiply_opacity(travel);
+
+                        let page = &PAGES[self.active];
+                        Self::page_header(ui, page);
+
+                        let mut cx = PageCtx {
+                            cfg: &mut cfg_guard,
+                            changed: &mut config_changed,
+                            temp_text: &mut self.temp_text,
+                            preview: &mut self.preview,
+                        };
+                        (page.draw)(ui, &mut cx);
+                    });
             });
 
         if config_changed {
