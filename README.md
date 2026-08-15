@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="Venu logo" width="800">
+  <img src="assets/file_00000000305c821187409948f43d9797.png" alt="Venu logo" width="180">
 </p>
 
 <p align="center">
-  <strong>Your Windows desktop, alive.</strong>
+  <strong>Dynamic Notch for Windows</strong>
 </p>
 
 <p align="center">
