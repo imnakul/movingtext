@@ -276,7 +276,7 @@ fn handle_webhook_client(
     }
 
     if first_line.starts_with("GET") {
-        let body = r#"{"status":"running","service":"MovingText Dynamic Notch"}"#;
+        let body = r#"{"status":"running","service":"Venu Dynamic Notch"}"#;
         let resp = format!(
             "HTTP/1.1 200 OK\r\n\
              Access-Control-Allow-Origin: *\r\n\

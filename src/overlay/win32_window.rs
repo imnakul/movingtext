@@ -16,7 +16,7 @@ use crate::overlay::d2d_renderer::{D2DRenderer, Edge};
 
 static CLASS_REGISTERED: AtomicBool = AtomicBool::new(false);
 
-const CLASS_NAME: &str = "MovingTextOverlayClass";
+const CLASS_NAME: &str = "VenuOverlayClass";
 
 pub struct Win32OverlayWindow {
     hwnd: HWND,
@@ -67,7 +67,7 @@ impl Win32OverlayWindow {
         }
 
         let class_name_hstr = HSTRING::from(CLASS_NAME);
-        let title_hstr = HSTRING::from("MovingTextOverlay");
+        let title_hstr = HSTRING::from("VenuOverlay");
 
         let hwnd = unsafe {
             CreateWindowExW(

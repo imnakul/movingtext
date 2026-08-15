@@ -47,7 +47,7 @@ use crate::notch::state::NotchState;
 use crate::notch::surface::D2DSurface;
 use crate::notch::theme;
 
-const CLASS_NAME: &str = "MovingTextNotchClass";
+const CLASS_NAME: &str = "VenuNotchClass";
 const HTTRANSPARENT: LRESULT = LRESULT(-1);
 const HTCLIENT: LRESULT = LRESULT(1);
 
@@ -260,7 +260,7 @@ impl NotchWindow {
 
         let hwnd = unsafe {
             let name = HSTRING::from(CLASS_NAME);
-            let title = HSTRING::from("MovingText Notch");
+            let title = HSTRING::from("Venu Notch");
             CreateWindowExW(
                 windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE(ex_style),
                 PCWSTR(name.as_ptr()),

@@ -1,4 +1,4 @@
-# Claude Code statusLine hook -> MovingText notch webhook.
+# Claude Code statusLine hook -> Venu notch webhook.
 # Registered in ~/.claude/settings.json under statusLine.command.
 # Claude Code pipes the full statusLine JSON schema to this script's stdin after
 # every turn, and prints whatever this script writes to stdout as the terminal

@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="MovingText logo" width="480">
+  <img src="assets/logo.svg" alt="Venu logo" width="800">
 </p>
 
 <p align="center">
-  <a href="https://github.com/imnakul/movingtext/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/imnakul/movingtext/ci.yml?branch=main&label=build&style=flat-square" alt="Build status"></a>
+  <a href="https://github.com/imnakul/venu/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/imnakul/venu/ci.yml?branch=main&label=build&style=flat-square" alt="Build status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0A0A0D.svg?style=flat-square" alt="Platform: Windows">
   <img src="https://img.shields.io/badge/built%20with-Rust-orange.svg?style=flat-square" alt="Built with Rust">
@@ -11,7 +11,7 @@
 
 ## Overview
 
-MovingText is a high-performance Windows desktop enhancement suite built in Rust. It combines a customizable scrolling edge marquee for ambient reminders with an interactive Dynamic Island (Notch) HUD for quick status, media playback controls, clock display, and desktop utilities.
+Venu is a high-performance Dynamic Notch and desktop HUD suite for Windows built in Rust. It pairs an expandable top-bezel Dynamic Island with a customizable scrolling edge marquee, providing live background blur, interactive media playback controls, a multi-format clock, instant desktop alerts, and precision theme customizers.
 
 The application operates locally with zero telemetry, zero cloud dependencies, and minimal system resource footprint, rendering via hardware-accelerated Direct2D and DirectWrite.
 
@@ -24,7 +24,7 @@ The application operates locally with zero telemetry, zero cloud dependencies, a
   - **Clock Slide**: Oversized digital clock with 12-hour or 24-hour formats and date presentation.
   - **Media Controls Slide**: Windows System Media Transport Controls (SMTC) integration displaying current track title, artist, live playback status, and interactive controls (play, pause, next, previous).
   - **Photo and Visual Slide**: Framed wallpaper preview and image rendering via Windows Imaging Component (WIC).
-  - **Marquee Quick Slide**: Displays active scrolling message text inside the notch.
+  - **Marquee Quick Slide**: Displays active scrolling reminder text directly inside the notch.
 - **Pin Mode**: Lock the island in an expanded state so it remains open while you work.
 - **Mouse Wheel Navigation**: Scroll over the notch to cycle through slides seamlessly.
 - **Click-Through Option**: Optional pass-through mode allows mouse clicks to reach underlying applications while preserving hover activation.
@@ -96,25 +96,25 @@ The application operates locally with zero telemetry, zero cloud dependencies, a
 ## Installation
 
 ### Option 1: Download Release Binary
-Download the latest `movingtext.exe` from the GitHub Releases page and run it directly. No installer or administrative permissions required.
+Download the latest `venu.exe` from the GitHub Releases page and run it directly. No installer or administrative permissions required.
 
 ### Option 2: Build from Source
 Requires the [Rust toolchain](https://www.rust-lang.org/tools/install) (stable) on Windows 10 or Windows 11.
 
 ```bash
-git clone https://github.com/imnakul/movingtext.git
-cd movingtext
+git clone https://github.com/imnakul/venu.git
+cd venu
 cargo build --release
 ```
 
-The compiled binary will be located at `target/release/movingtext.exe`.
+The compiled binary will be located at `target/release/venu.exe`.
 
 ## Configuration Storage
 
 All preferences and states are saved automatically to a local JSON file at:
 
 ```
-%APPDATA%\movingtext\config.json
+%APPDATA%\venu\config.json
 ```
 
 To reset the application to factory defaults, simply delete this file while the application is closed.
@@ -139,4 +139,4 @@ cargo check
 
 ## License
 
-MovingText is licensed under the [MIT License](LICENSE).
+Venu is licensed under the [MIT License](LICENSE).

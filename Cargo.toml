@@ -1,8 +1,8 @@
 [package]
-name = "movingtext"
+name = "venu"
 version = "0.1.0"
 edition = "2021"
-description = "A customizable scrolling text marquee that hugs the edges of your screen. Your reminders, always in motion."
+description = "A sleek, hardware-accelerated Dynamic Notch for Windows with live background blur, media controls, multi-glass finishes, and desktop notifications."
 license = "MIT"
 
 [dependencies]

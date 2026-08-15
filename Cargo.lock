@@ -1839,20 +1839,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "movingtext"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "eframe",
- "egui",
- "image",
- "parking_lot",
- "serde",
- "serde_json",
- "windows 0.58.0",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3182,6 +3168,20 @@ name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
+
+[[package]]
+name = "venu"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "eframe",
+ "egui",
+ "image",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "windows 0.58.0",
+]
 
 [[package]]
 name = "version_check"

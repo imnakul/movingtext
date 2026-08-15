@@ -22,12 +22,12 @@ const WM_TRAY_ICON: u32 = WM_USER + 101;
 const ID_TRAY_SETTINGS: usize = 2001;
 const ID_TRAY_EXIT: usize = 2002;
 
-static TRAY_CLASS_NAME: &str = "MovingTextTrayClass";
+static TRAY_CLASS_NAME: &str = "VenuTrayClass";
 
 /// Explorer broadcasts this registered message to every top-level window
 /// whenever it (re)starts — after a crash, an `explorer.exe` restart, or
 /// because it simply wasn't up yet when this app registered its icon (the
-/// case when MovingText is set to launch at sign-in). Every tray icon on the
+/// case when Venu is set to launch at sign-in). Every tray icon on the
 /// system is gone at that point; the fix is to listen for it and re-add.
 static WM_TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
 
@@ -184,7 +184,7 @@ impl SystemTray {
             let hwnd = CreateWindowExW(
                 Default::default(),
                 PCWSTR(class_hstr.as_ptr()),
-                PCWSTR(HSTRING::from("MovingTextTray").as_ptr()),
+                PCWSTR(HSTRING::from("VenuTray").as_ptr()),
                 WS_POPUP,
                 0,
                 0,
@@ -208,7 +208,7 @@ impl SystemTray {
                 ..Default::default()
             };
 
-            let tip = "MovingText, always in motion\0"
+            let tip = "Venu - Dynamic Notch for Windows\0"
                 .encode_utf16()
                 .collect::<Vec<u16>>();
             let len = tip.len().min(nid.szTip.len());
@@ -225,7 +225,7 @@ impl SystemTray {
             WM_TASKBAR_CREATED.store(taskbar_created, Ordering::SeqCst);
 
             if !Shell_NotifyIconW(NIM_ADD, &nid).as_bool() {
-                debug_log("MovingText: Shell_NotifyIconW(NIM_ADD) failed — tray icon not registered yet, will retry on TaskbarCreated");
+                debug_log("Venu: Shell_NotifyIconW(NIM_ADD) failed — tray icon not registered yet, will retry on TaskbarCreated");
             }
 
             Ok(Self { hwnd, nid, hicon })

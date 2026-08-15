@@ -666,7 +666,7 @@ fn default_phrase_spacing() -> u32 {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            text: "⭐ REMINDER: Stay focused & stay hydrated! • MovingText Desktop Marquee ⭐"
+            text: "⭐ REMINDER: Stay focused & stay hydrated! • Venu Dynamic Notch ⭐"
                 .to_string(),
             overlay_enabled: true,
             phrase_spacing: 6,
@@ -691,7 +691,7 @@ impl Default for AppConfig {
 impl AppConfig {
     pub fn config_path() -> PathBuf {
         if let Some(mut path) = dirs::config_dir() {
-            path.push("movingtext");
+            path.push("venu");
             let _ = fs::create_dir_all(&path);
             path.push("config.json");
             path
@@ -709,6 +709,21 @@ impl AppConfig {
                 }
             }
         }
+
+        // Backward compatibility fallback: check legacy movingtext path if venu doesn't exist yet
+        if let Some(mut legacy_path) = dirs::config_dir() {
+            legacy_path.push("movingtext");
+            legacy_path.push("config.json");
+            if legacy_path.exists() {
+                if let Ok(content) = fs::read_to_string(&legacy_path) {
+                    if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
+                        config.save();
+                        return config;
+                    }
+                }
+            }
+        }
+
         let default_cfg = Self::default();
         default_cfg.save();
         default_cfg

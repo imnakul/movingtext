@@ -1,4 +1,4 @@
-# Codex CLI notify hook -> MovingText notch webhook.
+# Codex CLI notify hook -> Venu notch webhook.
 # Registered as `notify = [...]` in ~/.codex/config.toml.
 # Codex appends the event JSON as the LAST argv argument (stdin/stdout/stderr are closed),
 # using kebab-case fields: type, thread-id, turn-id, cwd, client, input-messages, last-assistant-message.

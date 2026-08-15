@@ -30,7 +30,7 @@ unsafe extern "system" fn enum_windows_callback(
         let len = windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut buffer);
         if len > 0 {
             let text = String::from_utf16_lossy(&buffer[..len as usize]);
-            if text.contains("MovingText") && !text.contains("MovingTextTray") {
+            if (text.contains("Venu") || text.contains("MovingText")) && !text.contains("Tray") {
                 let out_ptr = lparam.0 as *mut isize;
                 *out_ptr = hwnd.0 as isize;
                 return windows::Win32::Foundation::BOOL(0);
@@ -49,7 +49,7 @@ pub unsafe fn find_settings_hwnd() -> Option<windows::Win32::Foundation::HWND> {
         }
     }
 
-    let title = windows::core::HSTRING::from("MovingText - Settings");
+    let title = windows::core::HSTRING::from("Venu - Settings");
     if let Ok(hwnd) = windows::Win32::UI::WindowsAndMessaging::FindWindowW(
         None,
         windows::core::PCWSTR(title.as_ptr()),
@@ -2072,13 +2072,13 @@ impl eframe::App for SettingsApp {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(
-                            RichText::new("MovingText")
+                            RichText::new("Venu")
                                 .size(16.0)
                                 .color(theme::text_primary())
                                 .strong(),
                         );
                         ui.label(
-                            RichText::new("Your reminders, always in motion")
+                            RichText::new("Dynamic Notch for Windows")
                                 .size(11.0)
                                 .color(theme::text_secondary()),
                         );

@@ -1,0 +1,57 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="iconBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141824"/>
+      <stop offset="100%" stop-color="#08090E"/>
+    </linearGradient>
+
+    <!-- Neon Glow Gradient -->
+    <linearGradient id="iconGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+
+    <!-- Surface Fill -->
+    <linearGradient id="notchSurface" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#232B3E" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#111520" stop-opacity="0.98"/>
+    </linearGradient>
+
+    <!-- Filter for soft ambient glow -->
+    <filter id="iconBlur" x="-30%" y="-30%" width="160%" height="160%" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- App Tile Background -->
+  <rect width="256" height="256" rx="56" fill="url(#iconBg)"/>
+  <rect x="1" y="1" width="254" height="254" rx="55" stroke="#252D40" stroke-width="2"/>
+
+  <!-- Radial Glow Behind Island -->
+  <circle cx="128" cy="116" r="64" fill="url(#iconGlow)" opacity="0.22" filter="url(#iconBlur)"/>
+
+  <!-- Top Display Bezel Reference Line -->
+  <path d="M 40 48 L 216 48" stroke="#1E2638" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Floating Dynamic Island (Venu Notch) -->
+  <rect x="44" y="60" width="168" height="60" rx="30" fill="url(#notchSurface)" stroke="url(#iconGlow)" stroke-width="2.5"/>
+
+  <!-- Specular Rim Light -->
+  <path d="M 68 65 L 188 65" stroke="#FFFFFF" stroke-opacity="0.4" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Harmonic Media Wave & Status Nodes inside Island -->
+  <circle cx="78" cy="90" r="7" fill="#38BDF8"/>
+  <rect x="98" y="80" width="5" height="20" rx="2.5" fill="#818CF8"/>
+  <rect x="110" y="74" width="5" height="32" rx="2.5" fill="#A855F7"/>
+  <rect x="122" y="82" width="5" height="16" rx="2.5" fill="#818CF8"/>
+  <rect x="134" y="77" width="5" height="26" rx="2.5" fill="#38BDF8"/>
+  <circle cx="178" cy="90" r="7" fill="#F59E0B"/>
+
+  <!-- Expanded Lower Card Preview -->
+  <rect x="60" y="140" width="136" height="64" rx="18" fill="#181E2C" stroke="#2C374D" stroke-width="1.5"/>
+  <circle cx="86" cy="172" r="5" fill="#10B981"/>
+  <rect x="104" y="168" width="68" height="8" rx="4" fill="#475569"/>
+</svg>

@@ -141,7 +141,7 @@ fn main() {
     });
 
     let mut viewport_builder = eframe::egui::ViewportBuilder::default()
-        .with_title("MovingText - Settings")
+        .with_title("Venu - Settings")
         .with_inner_size([760.0, 600.0])
         .with_min_inner_size([620.0, 480.0])
         .with_visible(true)
@@ -158,7 +158,7 @@ fn main() {
 
     let gui_config = Arc::clone(&config);
     let _ = eframe::run_native(
-        "MovingText",
+        "Venu",
         native_options,
         Box::new(|cc| Ok(Box::new(SettingsApp::new(cc, gui_config)))),
     );

@@ -28,10 +28,10 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}"
-          Copy-Item "target/release/movingtext.exe" "movingtext-$version.exe"
+          Copy-Item "target/release/venu.exe" "venu-$version.exe"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: movingtext-*.exe
+          files: venu-*.exe
           generate_release_notes: true

@@ -1,4 +1,4 @@
-# Antigravity Stop hook -> MovingText notch webhook.
+# Antigravity Stop hook -> Venu notch webhook.
 # Registered in .agents/hooks.json (or ~/.gemini/config/hooks.json) under the Stop event.
 # Antigravity pipes camelCase event JSON to stdin and expects JSON back on stdout.
 
