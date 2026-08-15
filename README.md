@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/logo.svg" alt="Venu Dynamic Notch for Windows" width="720">
+  <img src="assets/file_00000000782082119e0fbfaad14b1fa3.png" alt="Venu Dynamic Notch for Windows showing normal and expanded glass notch states, media controls, AI coding usage tracking for Claude Code, OpenAI Codex and Antigravity, desktop alerts, and system information" width="1200">
 </p>
 
 ## What is Venu?
