@@ -216,7 +216,11 @@ impl D2DRenderer {
             let single_phrase_with_spacing = format!("{}{}", config.text, spacing_str);
 
             let is_vertical = matches!(edge, Edge::Left | Edge::Right);
-            let screen_extent = if is_vertical { height as f32 } else { width as f32 };
+            let screen_extent = if is_vertical {
+                height as f32
+            } else {
+                width as f32
+            };
 
             // Measure single phrase width first to dynamically compute required repetitions
             let single_text_u16: Vec<u16> = single_phrase_with_spacing.encode_utf16().collect();

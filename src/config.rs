@@ -67,7 +67,6 @@ impl Default for AnimConfig {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Notch
 // ---------------------------------------------------------------------------
@@ -315,13 +314,13 @@ impl Default for NotificationConfig {
     fn default() -> Self {
         let mut app_colors = std::collections::HashMap::new();
         app_colors.insert("Antigravity".to_string(), [0.0, 0.94, 1.0, 1.0]); // #00F0FF Electric Cyan
-        app_colors.insert("Codex".to_string(), [0.06, 0.72, 0.51, 1.0]);    // #10B981 Emerald
-        app_colors.insert("Claude".to_string(), [0.98, 0.45, 0.09, 1.0]);   // #EA580C Terracotta
-        app_colors.insert("Cursor".to_string(), [0.39, 0.40, 0.95, 1.0]);   // #6366F1 Indigo
+        app_colors.insert("Codex".to_string(), [0.06, 0.72, 0.51, 1.0]); // #10B981 Emerald
+        app_colors.insert("Claude".to_string(), [0.98, 0.45, 0.09, 1.0]); // #EA580C Terracotta
+        app_colors.insert("Cursor".to_string(), [0.39, 0.40, 0.95, 1.0]); // #6366F1 Indigo
         app_colors.insert("Terminal".to_string(), [0.66, 0.33, 0.97, 1.0]); // #A855F7 Purple
-        app_colors.insert("VS Code".to_string(), [0.0, 0.47, 0.83, 1.0]);  // #0078D4 VS Blue
-        app_colors.insert("Slack".to_string(), [0.88, 0.12, 0.35, 1.0]);    // #E01E5A Berry
-        app_colors.insert("Discord".to_string(), [0.35, 0.40, 0.95, 1.0]);  // #5865F2 Blurple
+        app_colors.insert("VS Code".to_string(), [0.0, 0.47, 0.83, 1.0]); // #0078D4 VS Blue
+        app_colors.insert("Slack".to_string(), [0.88, 0.12, 0.35, 1.0]); // #E01E5A Berry
+        app_colors.insert("Discord".to_string(), [0.35, 0.40, 0.95, 1.0]); // #5865F2 Blurple
 
         Self {
             enabled: true,
@@ -595,7 +594,7 @@ impl Default for NotchConfig {
             active_slide: 0,
             default_collapsed: CollapsedMode::LastActive,
             notifications: NotificationConfig::default(),
-            accent: [1.0, 0.604, 0.235, 1.0],  // ember
+            accent: [1.0, 0.604, 0.235, 1.0],     // ember
             surface: [0.031, 0.031, 0.043, 0.97], // obsidian
             theme: NotchTheme::Dark,
             font_family: "Plus Jakarta Sans".to_string(),
@@ -666,8 +665,7 @@ fn default_phrase_spacing() -> u32 {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            text: "⭐ REMINDER: Stay focused & stay hydrated! • Venu Dynamic Notch ⭐"
-                .to_string(),
+            text: "⭐ REMINDER: Stay focused & stay hydrated! • Venu Dynamic Notch ⭐".to_string(),
             overlay_enabled: true,
             phrase_spacing: 6,
             edges: EdgeSelection::default(),

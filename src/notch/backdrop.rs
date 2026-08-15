@@ -17,7 +17,9 @@
 //!   its plain translucent surface, which still looks deliberate.
 
 use windows::Win32::Foundation::HWND;
-use windows::Win32::Graphics::Direct2D::Common::{D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PIXEL_FORMAT};
+use windows::Win32::Graphics::Direct2D::Common::{
+    D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PIXEL_FORMAT,
+};
 use windows::Win32::Graphics::Direct2D::{
     ID2D1Bitmap, ID2D1DCRenderTarget, D2D1_BITMAP_PROPERTIES,
 };
@@ -52,7 +54,11 @@ impl Backdrop {
     /// Buffer pixels needed for a region of this size. Kept in one place so
     /// the capacity check and the per-frame footprint can never disagree.
     fn extent(width: i32, height: i32, downscale: i32) -> (i32, i32) {
-        let ds = if downscale <= 0 { DEFAULT_DOWNSCALE } else { downscale.clamp(2, 32) };
+        let ds = if downscale <= 0 {
+            DEFAULT_DOWNSCALE
+        } else {
+            downscale.clamp(2, 32)
+        };
         (
             (width / ds).clamp(MIN_DIM, MAX_DIM),
             (height / ds).clamp(MIN_DIM, MAX_DIM),
@@ -119,8 +125,8 @@ impl Backdrop {
                 return false;
             }
 
-            let ok = StretchBlt(self.dc, 0, 0, uw, uh, screen, x, y, width, height, SRCCOPY)
-                .as_bool();
+            let ok =
+                StretchBlt(self.dc, 0, 0, uw, uh, screen, x, y, width, height, SRCCOPY).as_bool();
 
             ReleaseDC(None, screen);
 
@@ -214,7 +220,11 @@ impl BackdropCache {
             return None;
         }
 
-        let ds = if downscale <= 0 { DEFAULT_DOWNSCALE } else { downscale.clamp(2, 32) };
+        let ds = if downscale <= 0 {
+            DEFAULT_DOWNSCALE
+        } else {
+            downscale.clamp(2, 32)
+        };
         let (uw, uh) = Backdrop::extent(width, height, ds);
 
         if self.inner.is_none() || uw > self.capacity.0 || uh > self.capacity.1 {

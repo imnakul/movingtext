@@ -129,12 +129,7 @@ fn main() {
                 let elapsed = last_instant.elapsed().as_millis() as u32;
                 let wait = FRAME_MS.saturating_sub(elapsed);
                 if wait > 0 {
-                    MsgWaitForMultipleObjectsEx(
-                        None,
-                        wait,
-                        QS_ALLINPUT,
-                        MWMO_INPUTAVAILABLE,
-                    );
+                    MsgWaitForMultipleObjectsEx(None, wait, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
                 }
             }
         }

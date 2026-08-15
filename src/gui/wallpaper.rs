@@ -172,8 +172,14 @@ pub fn preview(
                 let f = i as f32 / 3.0;
                 let x = rect.left() + rect.width() * f;
                 let y = rect.top() + rect.height() * f;
-                painter.line_segment([egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())], guide);
-                painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)], guide);
+                painter.line_segment(
+                    [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                    guide,
+                );
+                painter.line_segment(
+                    [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                    guide,
+                );
             }
         }
     } else {

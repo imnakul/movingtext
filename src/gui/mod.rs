@@ -78,7 +78,6 @@ pub unsafe fn find_settings_hwnd() -> Option<windows::Win32::Foundation::HWND> {
     None
 }
 
-
 pub fn setup_custom_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
@@ -371,9 +370,11 @@ impl SettingsApp {
             } else {
                 // A wash that fades rather than snaps. Nobody will notice it;
                 // they would notice its absence as the rail feeling brittle.
-                let hover = ui
-                    .ctx()
-                    .animate_bool_with_time(response.id.with("hover"), response.hovered(), 0.11);
+                let hover = ui.ctx().animate_bool_with_time(
+                    response.id.with("hover"),
+                    response.hovered(),
+                    0.11,
+                );
                 if hover > 0.001 {
                     ui.painter().rect_filled(
                         rect,
@@ -423,8 +424,10 @@ impl SettingsApp {
                 .animate_value_with_time(egui::Id::new("nav_pill"), target.top(), 0.18);
             let moved = Rect::from_min_size(egui::pos2(target.left(), y), target.size());
 
-            ui.painter()
-                .set(pill, egui::Shape::rect_filled(moved, Rounding::same(8.0), theme::accent_wash()));
+            ui.painter().set(
+                pill,
+                egui::Shape::rect_filled(moved, Rounding::same(8.0), theme::accent_wash()),
+            );
             ui.painter().set(
                 bar,
                 egui::Shape::rect_filled(
@@ -457,8 +460,11 @@ impl SettingsApp {
         ui.add_space(6.0);
         let rect = ui.max_rect();
         let (line, _) = ui.allocate_exact_size(Vec2::new(rect.width(), 1.0), Sense::hover());
-        ui.painter()
-            .hline(line.x_range(), line.center().y, Stroke::new(1.0, theme::divider()));
+        ui.painter().hline(
+            line.x_range(),
+            line.center().y,
+            Stroke::new(1.0, theme::divider()),
+        );
         ui.add_space(18.0);
     }
 
@@ -592,9 +598,11 @@ impl SettingsApp {
         let lit = ui
             .ctx()
             .animate_bool_with_time(response.id.with("lit"), picked, 0.14);
-        let hover = ui
-            .ctx()
-            .animate_bool_with_time(response.id.with("hover"), response.hovered() && !picked, 0.11);
+        let hover = ui.ctx().animate_bool_with_time(
+            response.id.with("hover"),
+            response.hovered() && !picked,
+            0.11,
+        );
 
         ui.painter().rect_filled(
             rect,
@@ -609,8 +617,11 @@ impl SettingsApp {
             );
         }
         if lit > 0.001 {
-            ui.painter()
-                .rect_filled(rect, Rounding::same(8.0), theme::accent().gamma_multiply(lit));
+            ui.painter().rect_filled(
+                rect,
+                Rounding::same(8.0),
+                theme::accent().gamma_multiply(lit),
+            );
         }
 
         let text = if lit > 0.5 {
@@ -618,8 +629,13 @@ impl SettingsApp {
         } else {
             theme::text_secondary()
         };
-        ui.painter()
-            .text(rect.center(), Align2::CENTER_CENTER, label, egui::FontId::proportional(12.0), text);
+        ui.painter().text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            label,
+            egui::FontId::proportional(12.0),
+            text,
+        );
 
         response
     }
@@ -1177,7 +1193,10 @@ impl SettingsApp {
         Self::section_title(ui, "DYNAMIC NOTIFICATIONS");
 
         if ui
-            .checkbox(&mut cfg.notch.notifications.enabled, "Enable Dynamic Notch notifications")
+            .checkbox(
+                &mut cfg.notch.notifications.enabled,
+                "Enable Dynamic Notch notifications",
+            )
             .changed()
         {
             *changed = true;
@@ -1262,12 +1281,9 @@ impl SettingsApp {
         Self::row_inline(ui, "Toast duration", |ui| {
             if ui
                 .add(
-                    egui::Slider::new(
-                        &mut cfg.notch.notifications.toast_duration_secs,
-                        2.0..=10.0,
-                    )
-                    .suffix(" s")
-                    .step_by(0.5),
+                    egui::Slider::new(&mut cfg.notch.notifications.toast_duration_secs, 2.0..=10.0)
+                        .suffix(" s")
+                        .step_by(0.5),
                 )
                 .changed()
             {
@@ -1444,7 +1460,10 @@ impl SettingsApp {
                     {
                         remove = Some(i);
                     }
-                    if ui.add_enabled(i + 1 < len, egui::Button::new("▼")).clicked() {
+                    if ui
+                        .add_enabled(i + 1 < len, egui::Button::new("▼"))
+                        .clicked()
+                    {
                         move_down = Some(i);
                     }
                     if ui.add_enabled(i > 0, egui::Button::new("▲")).clicked() {
@@ -1501,11 +1520,7 @@ impl SettingsApp {
 
         Self::row_stacked(ui, "Collapsed", Some("The resting pill."), |ui| {
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("W")
-                        .size(12.0)
-                        .color(theme::text_secondary()),
-                );
+                ui.label(RichText::new("W").size(12.0).color(theme::text_secondary()));
                 if ui
                     .add(egui::DragValue::new(&mut cfg.notch.collapsed_width).range(60..=900))
                     .changed()
@@ -1513,11 +1528,7 @@ impl SettingsApp {
                     *changed = true;
                 }
                 ui.add_space(10.0);
-                ui.label(
-                    RichText::new("H")
-                        .size(12.0)
-                        .color(theme::text_secondary()),
-                );
+                ui.label(RichText::new("H").size(12.0).color(theme::text_secondary()));
                 if ui
                     .add(egui::DragValue::new(&mut cfg.notch.collapsed_height).range(18..=120))
                     .changed()
@@ -1529,11 +1540,7 @@ impl SettingsApp {
 
         Self::row_stacked(ui, "Expanded", Some("The panel it opens into."), |ui| {
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("W")
-                        .size(12.0)
-                        .color(theme::text_secondary()),
-                );
+                ui.label(RichText::new("W").size(12.0).color(theme::text_secondary()));
                 if ui
                     .add(egui::DragValue::new(&mut cfg.notch.expanded_width).range(320..=2200))
                     .changed()
@@ -1541,11 +1548,7 @@ impl SettingsApp {
                     *changed = true;
                 }
                 ui.add_space(10.0);
-                ui.label(
-                    RichText::new("H")
-                        .size(12.0)
-                        .color(theme::text_secondary()),
-                );
+                ui.label(RichText::new("H").size(12.0).color(theme::text_secondary()));
                 if ui
                     .add(egui::DragValue::new(&mut cfg.notch.expanded_height).range(120..=900))
                     .changed()
@@ -1561,7 +1564,10 @@ impl SettingsApp {
 
         Self::row_inline(ui, "Monitor", |ui| {
             let monitors = crate::notch::window::monitor_rects();
-            let current = cfg.notch.monitor_index.min(monitors.len().saturating_sub(1));
+            let current = cfg
+                .notch
+                .monitor_index
+                .min(monitors.len().saturating_sub(1));
             let label = monitors
                 .get(current)
                 .map(|m| {
@@ -1615,11 +1621,7 @@ impl SettingsApp {
             Some("Y of 0 fuses the notch to the bezel; anything higher lets it float."),
             |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("X")
-                            .size(12.0)
-                            .color(theme::text_secondary()),
-                    );
+                    ui.label(RichText::new("X").size(12.0).color(theme::text_secondary()));
                     if ui
                         .add(egui::DragValue::new(&mut cfg.notch.offset_x).range(-2000..=2000))
                         .changed()
@@ -1627,11 +1629,7 @@ impl SettingsApp {
                         *changed = true;
                     }
                     ui.add_space(10.0);
-                    ui.label(
-                        RichText::new("Y")
-                            .size(12.0)
-                            .color(theme::text_secondary()),
-                    );
+                    ui.label(RichText::new("Y").size(12.0).color(theme::text_secondary()));
                     if ui
                         .add(egui::DragValue::new(&mut cfg.notch.offset_y).range(0..=1200))
                         .changed()
@@ -1895,7 +1893,11 @@ impl SettingsApp {
 
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Zoom").size(12.0).color(theme::text_secondary()));
+                    ui.label(
+                        RichText::new("Zoom")
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
                     if ui
                         .add(
                             egui::Slider::new(&mut cfg.wallpaper.zoom, 1.0..=4.0)
@@ -1995,12 +1997,7 @@ impl SettingsApp {
         });
     }
 
-    fn color_row(
-        ui: &mut egui::Ui,
-        label: &str,
-        value: &mut [f32; 4],
-        changed: &mut bool,
-    ) {
+    fn color_row(ui: &mut egui::Ui, label: &str, value: &mut [f32; 4], changed: &mut bool) {
         Self::row_inline(ui, label, |ui| {
             if color_picker::color_picker_button(ui, label, value).changed() {
                 *changed = true;
@@ -2127,8 +2124,8 @@ impl eframe::App for SettingsApp {
         // it is only there for them — and it grows and shrinks rather than
         // appearing, which keeps the content below from jumping.
         let wants_preview = PAGES[self.active].group == Group::Marquee;
-        let strip = ctx.animate_bool_with_time(egui::Id::new("preview_strip"), wants_preview, 0.18)
-            * 52.0;
+        let strip =
+            ctx.animate_bool_with_time(egui::Id::new("preview_strip"), wants_preview, 0.18) * 52.0;
         if strip > 0.5 {
             egui::TopBottomPanel::bottom("preview")
                 .exact_height(strip)
@@ -2237,8 +2234,10 @@ fn paint_sidebar_hugeicon(
         }
         (Group::Notch, "Slides") => {
             // Hugeicons: Layers / Stacked Cards
-            let r1 = egui::Rect::from_center_size(center + egui::vec2(-1.5, -1.5), egui::vec2(9.5, 7.5));
-            let r2 = egui::Rect::from_center_size(center + egui::vec2(1.5, 1.5), egui::vec2(9.5, 7.5));
+            let r1 =
+                egui::Rect::from_center_size(center + egui::vec2(-1.5, -1.5), egui::vec2(9.5, 7.5));
+            let r2 =
+                egui::Rect::from_center_size(center + egui::vec2(1.5, 1.5), egui::vec2(9.5, 7.5));
             painter.rect_stroke(r1, egui::Rounding::same(2.0), stroke);
             painter.rect_stroke(r2, egui::Rounding::same(2.0), stroke);
         }
@@ -2246,32 +2245,89 @@ fn paint_sidebar_hugeicon(
             // Hugeicons: Checklist Task
             let rect = egui::Rect::from_center_size(center, egui::vec2(12.5, 12.5));
             painter.rect_stroke(rect, egui::Rounding::same(3.0), stroke);
-            painter.line_segment([egui::pos2(cx - 3.2, cy), egui::pos2(cx - 1.0, cy + 2.2)], stroke);
-            painter.line_segment([egui::pos2(cx - 1.0, cy + 2.2), egui::pos2(cx + 3.2, cy - 2.2)], stroke);
+            painter.line_segment(
+                [egui::pos2(cx - 3.2, cy), egui::pos2(cx - 1.0, cy + 2.2)],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 1.0, cy + 2.2),
+                    egui::pos2(cx + 3.2, cy - 2.2),
+                ],
+                stroke,
+            );
         }
         (Group::Notch, "Wallpaper") => {
             // Hugeicons: Photo Frame
             let rect = egui::Rect::from_center_size(center, egui::vec2(13.0, 11.0));
             painter.rect_stroke(rect, egui::Rounding::same(2.5), stroke);
-            painter.line_segment([egui::pos2(cx - 4.2, cy + 2.8), egui::pos2(cx - 1.0, cy - 1.0)], stroke);
-            painter.line_segment([egui::pos2(cx - 1.0, cy - 1.0), egui::pos2(cx + 2.0, cy + 2.0)], stroke);
-            painter.line_segment([egui::pos2(cx + 1.0, cy + 1.0), egui::pos2(cx + 4.2, cy - 1.5)], stroke);
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 4.2, cy + 2.8),
+                    egui::pos2(cx - 1.0, cy - 1.0),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 1.0, cy - 1.0),
+                    egui::pos2(cx + 2.0, cy + 2.0),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx + 1.0, cy + 1.0),
+                    egui::pos2(cx + 4.2, cy - 1.5),
+                ],
+                stroke,
+            );
             painter.circle_filled(egui::pos2(cx + 2.5, cy - 2.5), 1.1, color);
         }
         (Group::Notch, "Moving Text") => {
             // Hugeicons: Typographic 'T' with motion speed dashes
-            painter.line_segment([egui::pos2(cx - 3.2, cy - 4.0), egui::pos2(cx + 3.2, cy - 4.0)], stroke);
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 3.2, cy - 4.0),
+                    egui::pos2(cx + 3.2, cy - 4.0),
+                ],
+                stroke,
+            );
             painter.line_segment([egui::pos2(cx, cy - 4.0), egui::pos2(cx, cy + 4.0)], stroke);
-            painter.line_segment([egui::pos2(cx - 5.5, cy + 1.2), egui::pos2(cx - 2.5, cy + 1.2)], stroke);
-            painter.line_segment([egui::pos2(cx - 6.5, cy - 1.5), egui::pos2(cx - 4.5, cy - 1.5)], stroke);
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 5.5, cy + 1.2),
+                    egui::pos2(cx - 2.5, cy + 1.2),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 6.5, cy - 1.5),
+                    egui::pos2(cx - 4.5, cy - 1.5),
+                ],
+                stroke,
+            );
         }
         (Group::Notch, "Size & Place") => {
             // Hugeicons: Maximize Frame Corner Brackets
             let s = 5.0;
-            painter.line_segment([egui::pos2(cx - s, cy - s + 3.0), egui::pos2(cx - s, cy - s)], stroke);
-            painter.line_segment([egui::pos2(cx - s, cy - s), egui::pos2(cx - s + 3.0, cy - s)], stroke);
-            painter.line_segment([egui::pos2(cx + s, cy + s - 3.0), egui::pos2(cx + s, cy + s)], stroke);
-            painter.line_segment([egui::pos2(cx + s, cy + s), egui::pos2(cx + s - 3.0, cy + s)], stroke);
+            painter.line_segment(
+                [egui::pos2(cx - s, cy - s + 3.0), egui::pos2(cx - s, cy - s)],
+                stroke,
+            );
+            painter.line_segment(
+                [egui::pos2(cx - s, cy - s), egui::pos2(cx - s + 3.0, cy - s)],
+                stroke,
+            );
+            painter.line_segment(
+                [egui::pos2(cx + s, cy + s - 3.0), egui::pos2(cx + s, cy + s)],
+                stroke,
+            );
+            painter.line_segment(
+                [egui::pos2(cx + s, cy + s), egui::pos2(cx + s - 3.0, cy + s)],
+                stroke,
+            );
             painter.circle_filled(center, 1.2, color);
         }
         (Group::Notch, "Appearance") => {
@@ -2283,39 +2339,107 @@ fn paint_sidebar_hugeicon(
         }
         (Group::Notch, "Notifications") => {
             // Hugeicons: Notification Bell
-            painter.line_segment([egui::pos2(cx - 4.2, cy + 2.5), egui::pos2(cx + 4.2, cy + 2.5)], stroke);
-            painter.line_segment([egui::pos2(cx - 3.2, cy + 2.5), egui::pos2(cx - 2.2, cy - 2.2)], stroke);
-            painter.line_segment([egui::pos2(cx + 3.2, cy + 2.5), egui::pos2(cx + 2.2, cy - 2.2)], stroke);
-            painter.line_segment([egui::pos2(cx - 2.2, cy - 2.2), egui::pos2(cx + 2.2, cy - 2.2)], stroke);
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 4.2, cy + 2.5),
+                    egui::pos2(cx + 4.2, cy + 2.5),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 3.2, cy + 2.5),
+                    egui::pos2(cx - 2.2, cy - 2.2),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx + 3.2, cy + 2.5),
+                    egui::pos2(cx + 2.2, cy - 2.2),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 2.2, cy - 2.2),
+                    egui::pos2(cx + 2.2, cy - 2.2),
+                ],
+                stroke,
+            );
             painter.circle_filled(egui::pos2(cx, cy + 3.8), 1.1, color);
             painter.circle_stroke(egui::pos2(cx, cy - 3.5), 0.9, stroke);
         }
         (Group::Marquee, "Overview") => {
             // Hugeicons: Desktop Display Monitor
-            let screen = egui::Rect::from_center_size(center + egui::vec2(0.0, -1.2), egui::vec2(13.0, 9.0));
+            let screen =
+                egui::Rect::from_center_size(center + egui::vec2(0.0, -1.2), egui::vec2(13.0, 9.0));
             painter.rect_stroke(screen, egui::Rounding::same(2.0), stroke);
             painter.line_segment([egui::pos2(cx, cy + 3.3), egui::pos2(cx, cy + 5.2)], stroke);
-            painter.line_segment([egui::pos2(cx - 2.8, cy + 5.2), egui::pos2(cx + 2.8, cy + 5.2)], stroke);
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 2.8, cy + 5.2),
+                    egui::pos2(cx + 2.8, cy + 5.2),
+                ],
+                stroke,
+            );
         }
         (Group::Marquee, "Message") => {
             // Hugeicons: Chat Message Bubble
-            let bubble = egui::Rect::from_center_size(center + egui::vec2(0.0, -0.8), egui::vec2(12.5, 9.5));
+            let bubble =
+                egui::Rect::from_center_size(center + egui::vec2(0.0, -0.8), egui::vec2(12.5, 9.5));
             painter.rect_stroke(bubble, egui::Rounding::same(2.5), stroke);
-            painter.line_segment([egui::pos2(cx - 3.2, cy - 0.8), egui::pos2(cx + 3.2, cy - 0.8)], stroke);
-            painter.line_segment([egui::pos2(cx - 2.8, cy + 4.0), egui::pos2(cx - 1.0, cy + 5.8)], stroke);
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 3.2, cy - 0.8),
+                    egui::pos2(cx + 3.2, cy - 0.8),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 2.8, cy + 4.0),
+                    egui::pos2(cx - 1.0, cy + 5.8),
+                ],
+                stroke,
+            );
         }
         (Group::Marquee, "Appearance") => {
             // Hugeicons: Paintbrush
-            painter.line_segment([egui::pos2(cx - 3.8, cy + 3.8), egui::pos2(cx + 3.2, cy - 3.2)], egui::Stroke::new(1.6, color));
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 3.8, cy + 3.8),
+                    egui::pos2(cx + 3.2, cy - 3.2),
+                ],
+                egui::Stroke::new(1.6, color),
+            );
             painter.circle_filled(egui::pos2(cx - 3.8, cy + 3.8), 1.8, color);
-            painter.line_segment([egui::pos2(cx + 1.8, cy - 1.8), egui::pos2(cx + 4.2, cy - 4.2)], stroke);
+            painter.line_segment(
+                [
+                    egui::pos2(cx + 1.8, cy - 1.8),
+                    egui::pos2(cx + 4.2, cy - 4.2),
+                ],
+                stroke,
+            );
         }
         (Group::Marquee, "Motion") => {
             // Hugeicons: Activity Wave
             painter.line_segment([egui::pos2(cx - 5.5, cy), egui::pos2(cx - 2.8, cy)], stroke);
-            painter.line_segment([egui::pos2(cx - 2.8, cy), egui::pos2(cx - 1.0, cy - 4.0)], stroke);
-            painter.line_segment([egui::pos2(cx - 1.0, cy - 4.0), egui::pos2(cx + 1.2, cy + 4.0)], stroke);
-            painter.line_segment([egui::pos2(cx + 1.2, cy + 4.0), egui::pos2(cx + 3.0, cy)], stroke);
+            painter.line_segment(
+                [egui::pos2(cx - 2.8, cy), egui::pos2(cx - 1.0, cy - 4.0)],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(cx - 1.0, cy - 4.0),
+                    egui::pos2(cx + 1.2, cy + 4.0),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [egui::pos2(cx + 1.2, cy + 4.0), egui::pos2(cx + 3.0, cy)],
+                stroke,
+            );
             painter.line_segment([egui::pos2(cx + 3.0, cy), egui::pos2(cx + 5.5, cy)], stroke);
         }
         (Group::App, "Preferences") => {

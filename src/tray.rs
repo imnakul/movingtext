@@ -221,7 +221,8 @@ impl SystemTray {
             let nid_ptr = Box::into_raw(Box::new(nid));
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, nid_ptr as isize);
 
-            let taskbar_created = RegisterWindowMessageW(PCWSTR(HSTRING::from("TaskbarCreated").as_ptr()));
+            let taskbar_created =
+                RegisterWindowMessageW(PCWSTR(HSTRING::from("TaskbarCreated").as_ptr()));
             WM_TASKBAR_CREATED.store(taskbar_created, Ordering::SeqCst);
 
             if !Shell_NotifyIconW(NIM_ADD, &nid).as_bool() {

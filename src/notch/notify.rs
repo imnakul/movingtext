@@ -30,10 +30,10 @@ impl NotificationLevel {
     #[allow(dead_code)]
     pub fn badge_color(self) -> [f32; 4] {
         match self {
-            Self::Info => [0.22, 0.74, 0.97, 1.0],     // Cyan
-            Self::Success => [0.13, 0.85, 0.53, 1.0],  // Emerald
-            Self::Warning => [1.00, 0.65, 0.00, 1.0],  // Amber
-            Self::Action => [0.66, 0.33, 0.97, 1.0],   // Violet
+            Self::Info => [0.22, 0.74, 0.97, 1.0],    // Cyan
+            Self::Success => [0.13, 0.85, 0.53, 1.0], // Emerald
+            Self::Warning => [1.00, 0.65, 0.00, 1.0], // Amber
+            Self::Action => [0.66, 0.33, 0.97, 1.0],  // Violet
         }
     }
 }
@@ -139,8 +139,8 @@ impl NotificationCenter {
         }
 
         // Check if allowed
-        let allowed = allowed_apps.is_empty()
-            || allowed_apps.iter().any(|a| a.eq_ignore_ascii_case(app));
+        let allowed =
+            allowed_apps.is_empty() || allowed_apps.iter().any(|a| a.eq_ignore_ascii_case(app));
 
         if allowed {
             let dur = if duration > 0.5 { duration } else { 4.5 };
@@ -166,7 +166,11 @@ impl NotificationCenter {
 
     pub fn dismiss_toast(&mut self) {
         if let Some(toast) = self.active_toast.take() {
-            if let Some(item) = self.items.iter_mut().find(|i| i.id == toast.notification.id) {
+            if let Some(item) = self
+                .items
+                .iter_mut()
+                .find(|i| i.id == toast.notification.id)
+            {
                 item.read = true;
             }
         }

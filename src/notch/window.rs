@@ -32,9 +32,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetSystemMetrics, RegisterClassW,
     SetForegroundWindow, SetWindowLongW, SetWindowPos, ShowWindow, UpdateLayeredWindow,
     GWL_EXSTYLE, HMENU, HWND_NOTOPMOST, HWND_TOPMOST, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE,
-    SWP_NOSIZE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_CHAR, WM_KEYDOWN,
-    WM_KILLFOCUS, WM_LBUTTONDOWN, WM_NCHITTEST, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    SWP_NOSIZE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_CHAR, WM_KEYDOWN, WM_KILLFOCUS,
+    WM_LBUTTONDOWN, WM_NCHITTEST, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::config::{AppConfig, NotchAlign, NotchTheme, SlideKind};
@@ -586,14 +586,19 @@ impl NotchWindow {
         let notif_store = crate::notch::notify::global_store();
         notif_store.write().tick(dt);
         let has_toast = notif_store.read().active_toast.is_some();
-        let toast_target = if has_toast && !self.state.is_open() { 1.0 } else { 0.0 };
+        let toast_target = if has_toast && !self.state.is_open() {
+            1.0
+        } else {
+            0.0
+        };
         self.state.toast_progress.step(toast_target, dt);
 
         // Reset to default collapsed slide on collapse
         if target == 0.0 && self.state.expand.value <= 0.05 {
             let media_playing = self.painter.media.snapshot().playing;
             let unread = notif_store.read().unread_count() > 0;
-            self.state.apply_default_collapsed(cfg, media_playing, unread);
+            self.state
+                .apply_default_collapsed(cfg, media_playing, unread);
         }
 
         // Persist the resting slide so the notch comes back where it was.
@@ -747,7 +752,8 @@ impl NotchWindow {
         }
 
         // Only the left half of the split view is the editable focus line.
-        let split = shape.left + theme::GUTTER + (shape.width() - theme::GUTTER * 2.0) * theme::SPLIT_RATIO;
+        let split =
+            shape.left + theme::GUTTER + (shape.width() - theme::GUTTER * 2.0) * theme::SPLIT_RATIO;
         if cx < split && cy > shape.top {
             self.state.begin_edit(cfg);
             self.set_editing_style(cfg, true);
@@ -934,7 +940,6 @@ impl NotchWindow {
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }
     }
-
 }
 
 impl Drop for NotchWindow {

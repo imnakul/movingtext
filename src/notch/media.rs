@@ -63,7 +63,11 @@ impl MediaWatcher {
         let worker_running = running.clone();
         std::thread::spawn(move || run(worker_snapshot, worker_running, rx));
 
-        Self { snapshot, tx, running }
+        Self {
+            snapshot,
+            tx,
+            running,
+        }
     }
 
     pub fn snapshot(&self) -> NowPlaying {
@@ -112,8 +116,7 @@ fn run(snapshot: Arc<RwLock<NowPlaying>>, running: Arc<AtomicBool>, rx: Receiver
     unsafe { CoUninitialize() };
 }
 
-fn current_session() -> Option<windows::Media::Control::GlobalSystemMediaTransportControlsSession>
-{
+fn current_session() -> Option<windows::Media::Control::GlobalSystemMediaTransportControlsSession> {
     let manager = SessionManager::RequestAsync().ok()?.get().ok()?;
     manager.GetCurrentSession().ok()
 }

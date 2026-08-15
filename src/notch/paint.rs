@@ -16,8 +16,8 @@ use windows::Win32::Graphics::Direct2D::Common::{
 use windows::Win32::Graphics::Direct2D::{
     ID2D1Bitmap, ID2D1BitmapBrush, ID2D1DCRenderTarget, ID2D1Factory, ID2D1PathGeometry,
     ID2D1SolidColorBrush, D2D1_ANTIALIAS_MODE_ALIASED, D2D1_BITMAP_BRUSH_PROPERTIES,
-    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
-    D2D1_ELLIPSE, D2D1_EXTEND_MODE_CLAMP, D2D1_ROUNDED_RECT,
+    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_ELLIPSE,
+    D2D1_EXTEND_MODE_CLAMP, D2D1_ROUNDED_RECT,
 };
 use windows::Win32::Graphics::DirectWrite::{
     IDWriteTextLayout, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_WEIGHT_EXTRA_BOLD,
@@ -575,21 +575,33 @@ impl Painter {
         match cfg.notch.notifications.glow_style {
             crate::config::NotificationGlowStyle::CountdownDrain => {
                 if drain > 0.005 {
-                    if let Ok((geom, (hx, hy))) = build_3sided_border_geometry(factory, shape, drain) {
+                    if let Ok((geom, (hx, hy))) =
+                        build_3sided_border_geometry(factory, shape, drain)
+                    {
                         // Multi-pass neon bloom along smooth continuous path
-                        if let Ok(b_diffuse) = self.brush(t, theme::fade(app_color, glow_alpha * 0.22)) {
+                        if let Ok(b_diffuse) =
+                            self.brush(t, theme::fade(app_color, glow_alpha * 0.22))
+                        {
                             unsafe { t.DrawGeometry(&geom, &b_diffuse, 8.0, None) };
                         }
-                        if let Ok(b_halo) = self.brush(t, theme::fade(app_color, glow_alpha * 0.58)) {
+                        if let Ok(b_halo) = self.brush(t, theme::fade(app_color, glow_alpha * 0.58))
+                        {
                             unsafe { t.DrawGeometry(&geom, &b_halo, 4.0, None) };
                         }
-                        if let Ok(b_core) = self.brush(t, theme::fade(app_color, glow_alpha * 0.98)) {
+                        if let Ok(b_core) = self.brush(t, theme::fade(app_color, glow_alpha * 0.98))
+                        {
                             unsafe { t.DrawGeometry(&geom, &b_core, 2.0, None) };
                         }
 
                         // Glowing spark point on active draining head
                         self.dot(t, hx, hy, 4.0, theme::fade(app_color, glow_alpha * 0.9));
-                        self.dot(t, hx, hy, 2.0, theme::fade([1.0, 1.0, 1.0, 1.0], glow_alpha));
+                        self.dot(
+                            t,
+                            hx,
+                            hy,
+                            2.0,
+                            theme::fade([1.0, 1.0, 1.0, 1.0], glow_alpha),
+                        );
                     }
                 }
             }
@@ -674,10 +686,14 @@ impl Painter {
             crate::config::NotificationGlowStyle::NeonGlow => {
                 let pulse = 0.82 + 0.18 * (state.elapsed * 3.5).sin();
                 if let Ok((geom, _)) = build_3sided_border_geometry(factory, shape, 1.0) {
-                    if let Ok(b_diffuse) = self.brush(t, theme::fade(app_color, glow_alpha * 0.20 * pulse)) {
+                    if let Ok(b_diffuse) =
+                        self.brush(t, theme::fade(app_color, glow_alpha * 0.20 * pulse))
+                    {
                         unsafe { t.DrawGeometry(&geom, &b_diffuse, 10.0, None) };
                     }
-                    if let Ok(b_halo) = self.brush(t, theme::fade(app_color, glow_alpha * 0.55 * pulse)) {
+                    if let Ok(b_halo) =
+                        self.brush(t, theme::fade(app_color, glow_alpha * 0.55 * pulse))
+                    {
                         unsafe { t.DrawGeometry(&geom, &b_halo, 5.0, None) };
                     }
                     if let Ok(b_core) = self.brush(t, theme::fade(app_color, glow_alpha * 0.98)) {
@@ -842,10 +858,7 @@ impl Painter {
         else {
             return;
         };
-        let Ok(layout) = self
-            .text
-            .layout(text, &fmt, shape.width(), shape.height())
-        else {
+        let Ok(layout) = self.text.layout(text, &fmt, shape.width(), shape.height()) else {
             return;
         };
         TextEngine::set_tracking(&layout, theme::TRACK_LABEL, text.len() as u32);
@@ -861,7 +874,12 @@ impl Painter {
             right: cx + tw * 0.5 + pad_x,
             bottom: cy + th * 0.5 + pad_y,
         };
-        self.fill_rrect(t, plate, (th * 0.5 + pad_y).min(14.0), theme::fade(self.pal.scrim, alpha));
+        self.fill_rrect(
+            t,
+            plate,
+            (th * 0.5 + pad_y).min(14.0),
+            theme::fade(self.pal.scrim, alpha),
+        );
         self.draw_layout(
             t,
             &layout,
@@ -885,9 +903,7 @@ impl Painter {
         let w = shape.width().ceil() as i32;
         let h = shape.height().ceil() as i32;
 
-        let Some((bitmap, sx, sy)) =
-            self.backdrop
-                .sample(t, x, y, w, h, self.pal.blur_downscale)
+        let Some((bitmap, sx, sy)) = self.backdrop.sample(t, x, y, w, h, self.pal.blur_downscale)
         else {
             return;
         };
@@ -900,11 +916,11 @@ impl Painter {
             interpolationMode: D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
         };
 
-        let brush: ID2D1BitmapBrush = match unsafe { t.CreateBitmapBrush(&bitmap, Some(&props), None) }
-        {
-            Ok(b) => b,
-            Err(_) => return,
-        };
+        let brush: ID2D1BitmapBrush =
+            match unsafe { t.CreateBitmapBrush(&bitmap, Some(&props), None) } {
+                Ok(b) => b,
+                Err(_) => return,
+            };
 
         unsafe {
             let stretch = Matrix3x2 {
@@ -1039,9 +1055,9 @@ impl Painter {
                 let clock = Clock::now();
                 let time = clock.time_string(cfg.notch.clock_24h);
 
-                let Ok(fmt) = self
-                    .text
-                    .format(family, theme::SIZE_PILL + 1.0, DWRITE_FONT_WEIGHT_BOLD)
+                let Ok(fmt) =
+                    self.text
+                        .format(family, theme::SIZE_PILL + 1.0, DWRITE_FONT_WEIGHT_BOLD)
                 else {
                     return;
                 };
@@ -1073,7 +1089,13 @@ impl Painter {
 
                 let total = tw + suffix_w;
                 let x = cx - total * 0.5;
-                self.draw_layout(t, &layout, x, cy - th * 0.5, theme::fade(self.pal.text_hi, alpha));
+                self.draw_layout(
+                    t,
+                    &layout,
+                    x,
+                    cy - th * 0.5,
+                    theme::fade(self.pal.text_hi, alpha),
+                );
                 if let Some(sl) = suffix_layout {
                     let (_, sh) = TextEngine::measure(&sl);
                     self.draw_layout(
@@ -1101,9 +1123,9 @@ impl Painter {
                 let text_x = dot_x + dot_r + 9.0;
                 let avail = (shape.right - pad - text_x).max(10.0);
                 let focus = state.display_focus(cfg);
-                let Ok(fmt) = self
-                    .text
-                    .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
+                let Ok(fmt) =
+                    self.text
+                        .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
                 else {
                     return;
                 };
@@ -1157,18 +1179,12 @@ impl Painter {
                     if !caption.is_empty() {
                         // One flat scrim, not a gradient: at 34px tall a
                         // gradient has no room to resolve and just muddies.
-                        self.fill_rrect(
-                            t,
-                            art,
-                            radius,
-                            theme::fade(self.pal.scrim, alpha * 0.46),
-                        );
+                        self.fill_rrect(t, art, radius, theme::fade(self.pal.scrim, alpha * 0.46));
                         let avail = (art.right - art.left - 16.0).max(10.0);
-                        if let Ok(fmt) = self.text.format(
-                            family,
-                            theme::SIZE_PILL,
-                            DWRITE_FONT_WEIGHT_SEMI_BOLD,
-                        ) {
+                        if let Ok(fmt) =
+                            self.text
+                                .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
+                        {
                             self.text.set_ellipsis(&fmt);
                             if let Ok(layout) =
                                 self.text.layout(&caption, &fmt, avail, shape.height())
@@ -1248,9 +1264,9 @@ impl Painter {
                     format!("{} \u{2014} {}", now.title.trim(), now.artist.trim())
                 };
 
-                let Ok(fmt) = self
-                    .text
-                    .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
+                let Ok(fmt) =
+                    self.text
+                        .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
                 else {
                     return;
                 };
@@ -1281,7 +1297,11 @@ impl Painter {
                     cy,
                     dot_r,
                     theme::fade(
-                        if has_unread { [0.22, 0.74, 0.97, 1.0] } else { self.pal.text_lo },
+                        if has_unread {
+                            [0.22, 0.74, 0.97, 1.0]
+                        } else {
+                            self.pal.text_lo
+                        },
                         alpha * if has_unread { state.pulse() } else { 0.7 },
                     ),
                 );
@@ -1294,9 +1314,9 @@ impl Painter {
                     "No notifications".to_string()
                 };
 
-                let Ok(fmt) = self
-                    .text
-                    .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
+                let Ok(fmt) =
+                    self.text
+                        .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
                 else {
                     return;
                 };
@@ -1318,7 +1338,13 @@ impl Painter {
                 let snapshot = crate::notch::notify::usage_store().read().clone();
                 let dot_r = 3.0;
                 let dot_x = shape.left + pad + dot_r;
-                self.dot(t, dot_x, cy, dot_r, theme::fade(cfg.notch.accent, alpha * 0.8));
+                self.dot(
+                    t,
+                    dot_x,
+                    cy,
+                    dot_r,
+                    theme::fade(cfg.notch.accent, alpha * 0.8),
+                );
 
                 let text_x = dot_x + dot_r + 9.0;
                 let avail = (shape.right - pad - text_x).max(10.0);
@@ -1327,9 +1353,9 @@ impl Painter {
                     None => "Claude usage".to_string(),
                 };
 
-                let Ok(fmt) = self
-                    .text
-                    .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
+                let Ok(fmt) =
+                    self.text
+                        .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
                 else {
                     return;
                 };
@@ -1388,7 +1414,16 @@ impl Painter {
                 ..shape
             };
 
-            self.paint_slide(t, factory, cfg, state, *slide, panel, slide_alpha, generation);
+            self.paint_slide(
+                t,
+                factory,
+                cfg,
+                state,
+                *slide,
+                panel,
+                slide_alpha,
+                generation,
+            );
         }
 
         if slides.len() > 1 {
@@ -1430,7 +1465,13 @@ impl Painter {
         }
     }
 
-    fn paint_usage(&mut self, t: &ID2D1DCRenderTarget, cfg: &AppConfig, body: D2D_RECT_F, alpha: f32) {
+    fn paint_usage(
+        &mut self,
+        t: &ID2D1DCRenderTarget,
+        cfg: &AppConfig,
+        body: D2D_RECT_F,
+        alpha: f32,
+    ) {
         let family = &cfg.notch.font_family;
         let snapshot = crate::notch::notify::usage_store().read().clone();
 
@@ -1481,8 +1522,16 @@ impl Painter {
 
         let rows: [(&str, Option<f32>, Option<&str>); 3] = [
             ("CONTEXT WINDOW", snapshot.context_used_pct, None),
-            ("5-HOUR LIMIT", snapshot.rate_5h_pct, snapshot.rate_5h_resets_at.as_deref()),
-            ("7-DAY LIMIT", snapshot.rate_7d_pct, snapshot.rate_7d_resets_at.as_deref()),
+            (
+                "5-HOUR LIMIT",
+                snapshot.rate_5h_pct,
+                snapshot.rate_5h_resets_at.as_deref(),
+            ),
+            (
+                "7-DAY LIMIT",
+                snapshot.rate_7d_pct,
+                snapshot.rate_7d_resets_at.as_deref(),
+            ),
         ];
 
         let row_h = 26.0;
@@ -1748,9 +1797,28 @@ impl Painter {
             let cx = (body.left + body.right) * 0.5;
 
             // Soft empty badge
-            self.dot(t, cx, center_y - 14.0, 14.0, theme::fade(self.pal.well, alpha));
-            self.ring(t, cx, center_y - 14.0, 14.0, 1.2, theme::fade(self.pal.rule, alpha));
-            self.dot(t, cx, center_y - 14.0, 3.5, theme::fade([0.22, 0.74, 0.97, 1.0], alpha));
+            self.dot(
+                t,
+                cx,
+                center_y - 14.0,
+                14.0,
+                theme::fade(self.pal.well, alpha),
+            );
+            self.ring(
+                t,
+                cx,
+                center_y - 14.0,
+                14.0,
+                1.2,
+                theme::fade(self.pal.rule, alpha),
+            );
+            self.dot(
+                t,
+                cx,
+                center_y - 14.0,
+                3.5,
+                theme::fade([0.22, 0.74, 0.97, 1.0], alpha),
+            );
 
             self.label(
                 t,
@@ -1791,12 +1859,7 @@ impl Painter {
                 };
 
                 // Card background well
-                self.fill_rrect(
-                    t,
-                    item_rect,
-                    8.0,
-                    theme::fade(self.pal.well, alpha * 0.75),
-                );
+                self.fill_rrect(t, item_rect, 8.0, theme::fade(self.pal.well, alpha * 0.75));
                 self.stroke_rrect(
                     t,
                     item_rect,
@@ -2047,9 +2110,21 @@ impl Painter {
 
             // Marker: filled ember pip when done, hollow ring when not.
             if item.done {
-                self.dot(t, rx + 4.0, cy, 4.0, theme::fade(cfg.notch.accent, alpha * 0.9));
+                self.dot(
+                    t,
+                    rx + 4.0,
+                    cy,
+                    4.0,
+                    theme::fade(cfg.notch.accent, alpha * 0.9),
+                );
             } else {
-                self.dot(t, rx + 4.0, cy, 4.0, theme::fade(self.pal.well, alpha * 3.0));
+                self.dot(
+                    t,
+                    rx + 4.0,
+                    cy,
+                    4.0,
+                    theme::fade(self.pal.well, alpha * 3.0),
+                );
                 self.dot(t, rx + 4.0, cy, 2.4, theme::fade(cfg.notch.surface, alpha));
             }
 
@@ -2108,9 +2183,9 @@ impl Painter {
             .text
             .format(family, theme::SIZE_CLOCK, DWRITE_FONT_WEIGHT_EXTRA_BOLD)
         {
-            if let Ok(layout) = self
-                .text
-                .layout(&time, &fmt, body.right - body.left, body.bottom - body.top)
+            if let Ok(layout) =
+                self.text
+                    .layout(&time, &fmt, body.right - body.left, body.bottom - body.top)
             {
                 let (w, h) = TextEngine::measure(&layout);
                 time_w = w;
@@ -2277,10 +2352,7 @@ impl Painter {
         let spacing = " ".repeat(cfg.phrase_spacing.max(1) as usize);
         let phrase = format!("{}{}", cfg.text, spacing);
 
-        let Ok(fmt) = self
-            .text
-            .format(family, size, DWRITE_FONT_WEIGHT_SEMI_BOLD)
-        else {
+        let Ok(fmt) = self.text.format(family, size, DWRITE_FONT_WEIGHT_SEMI_BOLD) else {
             return;
         };
 
@@ -2314,10 +2386,7 @@ impl Painter {
         let repeats = ((width / phrase_w).ceil() as usize + 2).clamp(2, 400);
         let full: String = phrase.repeat(repeats);
 
-        let Ok(layout) = self
-            .text
-            .layout(&full, &fmt, 100_000.0, height * 4.0)
-        else {
+        let Ok(layout) = self.text.layout(&full, &fmt, 100_000.0, height * 4.0) else {
             return;
         };
         let (_, th) = TextEngine::measure(&layout);
@@ -2541,12 +2610,7 @@ impl Painter {
         true
     }
 
-    fn decode(
-        &self,
-        t: &ID2D1DCRenderTarget,
-        path: &str,
-        generation: u64,
-    ) -> Option<CachedImage> {
+    fn decode(&self, t: &ID2D1DCRenderTarget, path: &str, generation: u64) -> Option<CachedImage> {
         let wic = self.wic.as_ref()?;
         let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
 
@@ -2963,7 +3027,12 @@ impl Painter {
             right: px + 7.0,
             bottom: y + dot_r + 0.6,
         };
-        self.fill_rrect(t, capsule, dot_r + 0.6, theme::fade(cfg.notch.accent, alpha));
+        self.fill_rrect(
+            t,
+            capsule,
+            dot_r + 0.6,
+            theme::fade(cfg.notch.accent, alpha),
+        );
     }
 }
 
@@ -3125,7 +3194,15 @@ fn build_3sided_border_geometry(
     let sink = unsafe { geometry.Open()? };
 
     let first = *points.first().unwrap_or(&(shape.left, shape.top));
-    unsafe { sink.BeginFigure(D2D_POINT_2F { x: first.0, y: first.1 }, D2D1_FIGURE_BEGIN_HOLLOW) };
+    unsafe {
+        sink.BeginFigure(
+            D2D_POINT_2F {
+                x: first.0,
+                y: first.1,
+            },
+            D2D1_FIGURE_BEGIN_HOLLOW,
+        )
+    };
 
     let seg_lens: Vec<f32> = points
         .windows(2)
@@ -3217,7 +3294,10 @@ fn sample_notch_perimeter(shape: &NotchShape, _step_count: usize) -> Vec<(f32, f
     let bottom_to = bottom_right.map(|c| c.start()).unwrap_or((r, b));
     for i in 0..=bottom_steps {
         let f = i as f32 / bottom_steps as f32;
-        path.push((bottom_from.0 + (bottom_to.0 - bottom_from.0) * f, bottom_from.1));
+        path.push((
+            bottom_from.0 + (bottom_to.0 - bottom_from.0) * f,
+            bottom_from.1,
+        ));
     }
 
     // 5. Bottom-right corner.

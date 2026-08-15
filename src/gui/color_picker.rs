@@ -9,8 +9,7 @@
 //! - Quick-select curated palette swatches for fast theme styling.
 
 use eframe::egui::{
-    self, epaint::Vertex, Color32, Mesh, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui,
-    Vec2,
+    self, epaint::Vertex, Color32, Mesh, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui, Vec2,
 };
 
 use crate::gui::theme;
@@ -191,11 +190,7 @@ fn draw_checkerboard(
 // ----------------------------------------------------------------------------
 
 /// Render a modern trigger capsule that opens a comprehensive color editing popup.
-pub fn color_picker_button(
-    ui: &mut Ui,
-    id_source: &str,
-    color: &mut [f32; 4],
-) -> Response {
+pub fn color_picker_button(ui: &mut Ui, id_source: &str, color: &mut [f32; 4]) -> Response {
     let id = ui.make_persistent_id(id_source);
     let popup_id = id.with("popup");
 
@@ -262,7 +257,8 @@ pub fn color_picker_button(
             (color[2].clamp(0.0, 1.0) * 255.0) as u8,
             (color[3].clamp(0.0, 1.0) * 255.0) as u8,
         );
-        ui.painter().rect_filled(swatch_rect, swatch_rounding, preview_color);
+        ui.painter()
+            .rect_filled(swatch_rect, swatch_rounding, preview_color);
         ui.painter().rect_stroke(
             swatch_rect,
             swatch_rounding,
@@ -309,9 +305,8 @@ pub fn color_picker_button(
             ui.set_max_width(260.0);
 
             let state_id = id.with("state");
-            let mut state: ColorPickerState = ui
-                .data_mut(|d| d.get_temp(state_id))
-                .unwrap_or_default();
+            let mut state: ColorPickerState =
+                ui.data_mut(|d| d.get_temp(state_id)).unwrap_or_default();
 
             // Sync state from color on open or first init
             if !state.initialized {
@@ -347,11 +342,8 @@ pub fn color_picker_button(
                     (color[3] * 255.0) as u8,
                 );
                 ui.painter().rect_filled(h_rect, h_round, c_active);
-                ui.painter().rect_stroke(
-                    h_rect,
-                    h_round,
-                    Stroke::new(1.0, theme::divider()),
-                );
+                ui.painter()
+                    .rect_stroke(h_rect, h_round, Stroke::new(1.0, theme::divider()));
 
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
@@ -362,7 +354,11 @@ pub fn color_picker_button(
                                 .size(12.0)
                                 .color(theme::text_primary()),
                         );
-                        if ui.small_button("📋").on_hover_text("Copy Hex Code").clicked() {
+                        if ui
+                            .small_button("📋")
+                            .on_hover_text("Copy Hex Code")
+                            .clicked()
+                        {
                             ui.output_mut(|o| o.copied_text = rgba_to_hex(*color, state.a < 1.0));
                         }
                     });
@@ -405,10 +401,26 @@ pub fn color_picker_button(
                 let bl = Pos2::new(sv_rect.left(), sv_rect.bottom());
                 let br = Pos2::new(sv_rect.right(), sv_rect.bottom());
 
-                mesh.vertices.push(Vertex { pos: tl, uv: Pos2::ZERO, color: Color32::WHITE });
-                mesh.vertices.push(Vertex { pos: tr, uv: Pos2::ZERO, color: pure_hue });
-                mesh.vertices.push(Vertex { pos: br, uv: Pos2::ZERO, color: Color32::BLACK });
-                mesh.vertices.push(Vertex { pos: bl, uv: Pos2::ZERO, color: Color32::BLACK });
+                mesh.vertices.push(Vertex {
+                    pos: tl,
+                    uv: Pos2::ZERO,
+                    color: Color32::WHITE,
+                });
+                mesh.vertices.push(Vertex {
+                    pos: tr,
+                    uv: Pos2::ZERO,
+                    color: pure_hue,
+                });
+                mesh.vertices.push(Vertex {
+                    pos: br,
+                    uv: Pos2::ZERO,
+                    color: Color32::BLACK,
+                });
+                mesh.vertices.push(Vertex {
+                    pos: bl,
+                    uv: Pos2::ZERO,
+                    color: Color32::BLACK,
+                });
 
                 mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
                 ui.painter().add(mesh);
@@ -425,9 +437,12 @@ pub fn color_picker_button(
                     sv_rect.top() + (1.0 - state.v) * sv_rect.height(),
                 );
 
-                ui.painter().circle_filled(handle_pos, 7.0, Color32::from_black_alpha(80));
-                ui.painter().circle_stroke(handle_pos, 6.0, Stroke::new(2.0, Color32::WHITE));
-                ui.painter().circle_stroke(handle_pos, 4.0, Stroke::new(1.0, Color32::BLACK));
+                ui.painter()
+                    .circle_filled(handle_pos, 7.0, Color32::from_black_alpha(80));
+                ui.painter()
+                    .circle_stroke(handle_pos, 6.0, Stroke::new(2.0, Color32::WHITE));
+                ui.painter()
+                    .circle_stroke(handle_pos, 4.0, Stroke::new(1.0, Color32::BLACK));
             }
 
             ui.add_space(8.0);
@@ -470,10 +485,26 @@ pub fn color_picker_button(
                     );
 
                     let mut mesh = Mesh::default();
-                    mesh.vertices.push(Vertex { pos: rect.left_top(), uv: Pos2::ZERO, color: c1 });
-                    mesh.vertices.push(Vertex { pos: rect.right_top(), uv: Pos2::ZERO, color: c2 });
-                    mesh.vertices.push(Vertex { pos: rect.right_bottom(), uv: Pos2::ZERO, color: c2 });
-                    mesh.vertices.push(Vertex { pos: rect.left_bottom(), uv: Pos2::ZERO, color: c1 });
+                    mesh.vertices.push(Vertex {
+                        pos: rect.left_top(),
+                        uv: Pos2::ZERO,
+                        color: c1,
+                    });
+                    mesh.vertices.push(Vertex {
+                        pos: rect.right_top(),
+                        uv: Pos2::ZERO,
+                        color: c2,
+                    });
+                    mesh.vertices.push(Vertex {
+                        pos: rect.right_bottom(),
+                        uv: Pos2::ZERO,
+                        color: c2,
+                    });
+                    mesh.vertices.push(Vertex {
+                        pos: rect.left_bottom(),
+                        uv: Pos2::ZERO,
+                        color: c1,
+                    });
                     mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
                     ui.painter().add(mesh);
                 }
@@ -499,7 +530,8 @@ pub fn color_picker_button(
             ui.add_space(6.0);
 
             // 3. Alpha / Opacity Slider
-            let (alpha_rect, alpha_resp) = ui.allocate_exact_size(slider_size, Sense::click_and_drag());
+            let (alpha_rect, alpha_resp) =
+                ui.allocate_exact_size(slider_size, Sense::click_and_drag());
 
             if alpha_resp.dragged() || alpha_resp.clicked() {
                 if let Some(pos) = alpha_resp.interact_pointer_pos() {
@@ -532,10 +564,26 @@ pub fn color_picker_button(
                 );
 
                 let mut mesh = Mesh::default();
-                mesh.vertices.push(Vertex { pos: alpha_rect.left_top(), uv: Pos2::ZERO, color: c_transparent });
-                mesh.vertices.push(Vertex { pos: alpha_rect.right_top(), uv: Pos2::ZERO, color: c_opaque });
-                mesh.vertices.push(Vertex { pos: alpha_rect.right_bottom(), uv: Pos2::ZERO, color: c_opaque });
-                mesh.vertices.push(Vertex { pos: alpha_rect.left_bottom(), uv: Pos2::ZERO, color: c_transparent });
+                mesh.vertices.push(Vertex {
+                    pos: alpha_rect.left_top(),
+                    uv: Pos2::ZERO,
+                    color: c_transparent,
+                });
+                mesh.vertices.push(Vertex {
+                    pos: alpha_rect.right_top(),
+                    uv: Pos2::ZERO,
+                    color: c_opaque,
+                });
+                mesh.vertices.push(Vertex {
+                    pos: alpha_rect.right_bottom(),
+                    uv: Pos2::ZERO,
+                    color: c_opaque,
+                });
+                mesh.vertices.push(Vertex {
+                    pos: alpha_rect.left_bottom(),
+                    uv: Pos2::ZERO,
+                    color: c_transparent,
+                });
                 mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
                 ui.painter().add(mesh);
 
@@ -609,10 +657,13 @@ pub fn color_picker_button(
 
                         // Opacity percentage
                         let mut pct = (state.a * 100.0).round() as i32;
-                        if ui.add_sized(
-                            Vec2::new(60.0, 22.0),
-                            egui::DragValue::new(&mut pct).range(0..=100).suffix("%"),
-                        ).changed() {
+                        if ui
+                            .add_sized(
+                                Vec2::new(60.0, 22.0),
+                                egui::DragValue::new(&mut pct).range(0..=100).suffix("%"),
+                            )
+                            .changed()
+                        {
                             state.a = (pct as f32 / 100.0).clamp(0.0, 1.0);
                             color[3] = state.a;
                             state.hex_text = rgba_to_hex(*color, state.a < 1.0);
@@ -628,10 +679,18 @@ pub fn color_picker_button(
                         let mut a = (color[3] * 255.0).round() as u8;
 
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        if ui.add(egui::DragValue::new(&mut r).prefix("R:").range(0..=255)).changed()
-                            || ui.add(egui::DragValue::new(&mut g).prefix("G:").range(0..=255)).changed()
-                            || ui.add(egui::DragValue::new(&mut b).prefix("B:").range(0..=255)).changed()
-                            || ui.add(egui::DragValue::new(&mut a).prefix("A:").range(0..=255)).changed()
+                        if ui
+                            .add(egui::DragValue::new(&mut r).prefix("R:").range(0..=255))
+                            .changed()
+                            || ui
+                                .add(egui::DragValue::new(&mut g).prefix("G:").range(0..=255))
+                                .changed()
+                            || ui
+                                .add(egui::DragValue::new(&mut b).prefix("B:").range(0..=255))
+                                .changed()
+                            || ui
+                                .add(egui::DragValue::new(&mut a).prefix("A:").range(0..=255))
+                                .changed()
                         {
                             color[0] = r as f32 / 255.0;
                             color[1] = g as f32 / 255.0;
@@ -655,10 +714,38 @@ pub fn color_picker_button(
                         let mut a_pct = (state.a * 100.0).round() as i32;
 
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        if ui.add(egui::DragValue::new(&mut h_deg).prefix("H:").range(0..=360).suffix("°")).changed()
-                            || ui.add(egui::DragValue::new(&mut s_pct).prefix("S:").range(0..=100).suffix("%")).changed()
-                            || ui.add(egui::DragValue::new(&mut v_pct).prefix("V:").range(0..=100).suffix("%")).changed()
-                            || ui.add(egui::DragValue::new(&mut a_pct).prefix("A:").range(0..=100).suffix("%")).changed()
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut h_deg)
+                                    .prefix("H:")
+                                    .range(0..=360)
+                                    .suffix("°"),
+                            )
+                            .changed()
+                            || ui
+                                .add(
+                                    egui::DragValue::new(&mut s_pct)
+                                        .prefix("S:")
+                                        .range(0..=100)
+                                        .suffix("%"),
+                                )
+                                .changed()
+                            || ui
+                                .add(
+                                    egui::DragValue::new(&mut v_pct)
+                                        .prefix("V:")
+                                        .range(0..=100)
+                                        .suffix("%"),
+                                )
+                                .changed()
+                            || ui
+                                .add(
+                                    egui::DragValue::new(&mut a_pct)
+                                        .prefix("A:")
+                                        .range(0..=100)
+                                        .suffix("%"),
+                                )
+                                .changed()
                         {
                             state.h = (h_deg as f32 / 360.0).clamp(0.0, 1.0);
                             state.s = (s_pct as f32 / 100.0).clamp(0.0, 1.0);
@@ -690,20 +777,20 @@ pub fn color_picker_button(
             let presets: &[[f32; 4]] = &[
                 // Neutrals & Dark
                 [0.031, 0.031, 0.043, 1.0], // Obsidian
-                [0.10, 0.12, 0.16, 1.0],   // Slate
-                [0.40, 0.42, 0.48, 1.0],   // Steel Grey
-                [0.85, 0.86, 0.90, 1.0],   // Mist
-                [0.98, 0.98, 1.00, 1.0],   // Cloud White
-                [0.07, 0.07, 0.09, 0.55],  // Frosted Tint
+                [0.10, 0.12, 0.16, 1.0],    // Slate
+                [0.40, 0.42, 0.48, 1.0],    // Steel Grey
+                [0.85, 0.86, 0.90, 1.0],    // Mist
+                [0.98, 0.98, 1.00, 1.0],    // Cloud White
+                [0.07, 0.07, 0.09, 0.55],   // Frosted Tint
                 // Vibrant Accents
-                [0.43, 0.55, 0.98, 1.0],   // Accent Blue
-                [0.23, 0.51, 0.96, 1.0],   // Electric Blue
-                [0.02, 0.71, 0.83, 1.0],   // Cyan
-                [0.06, 0.73, 0.51, 1.0],   // Emerald
-                [0.96, 0.62, 0.04, 1.0],   // Amber
-                [0.98, 0.45, 0.09, 1.0],   // Orange
-                [0.96, 0.25, 0.37, 1.0],   // Coral Red
-                [0.55, 0.36, 0.96, 1.0],   // Violet
+                [0.43, 0.55, 0.98, 1.0], // Accent Blue
+                [0.23, 0.51, 0.96, 1.0], // Electric Blue
+                [0.02, 0.71, 0.83, 1.0], // Cyan
+                [0.06, 0.73, 0.51, 1.0], // Emerald
+                [0.96, 0.62, 0.04, 1.0], // Amber
+                [0.98, 0.45, 0.09, 1.0], // Orange
+                [0.96, 0.25, 0.37, 1.0], // Coral Red
+                [0.55, 0.36, 0.96, 1.0], // Violet
             ];
 
             ui.horizontal_wrapped(|ui| {
