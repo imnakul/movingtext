@@ -20,6 +20,7 @@ pub mod backdrop;
 pub mod geom;
 pub mod hook;
 pub mod media;
+pub mod notify;
 pub mod paint;
 pub mod state;
 pub mod surface;
@@ -49,6 +50,15 @@ pub struct NotchManager {
 
 impl NotchManager {
     pub fn new(config: Arc<RwLock<AppConfig>>) -> Self {
+        let (port, allowed) = {
+            let cfg = config.read();
+            (
+                cfg.notch.notifications.webhook_port,
+                cfg.notch.notifications.allowed_apps.clone(),
+            )
+        };
+        notify::start_webhook_server(port, allowed);
+
         Self {
             config,
             window: None,

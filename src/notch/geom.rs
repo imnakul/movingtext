@@ -52,6 +52,11 @@ impl NotchShape {
         }
     }
 
+    /// Centre and radius of the settings launcher button.
+    pub fn settings_button(&self) -> (f32, f32, f32) {
+        (self.right - 43.0, self.top + 19.0, 9.0)
+    }
+
     /// Centre and radius of the pin toggle, in the shape's own coordinates.
     /// Inset from the top-right corner, clear of the shoulder curve — shared
     /// by the painter (to draw it) and the window (to hit-test clicks on it),
@@ -257,4 +262,47 @@ pub fn media_transport_buttons(body: D2D_RECT_F) -> [(f32, f32, f32); 3] {
         (cx, cy, r),
         (cx + gap, cy, r * 0.72),
     ]
+}
+
+/// "Clear All" button bounds in the Notifications slide header.
+pub fn notification_clear_button(body: D2D_RECT_F) -> D2D_RECT_F {
+    D2D_RECT_F {
+        left: body.right - 68.0,
+        top: body.top - 2.0,
+        right: body.right,
+        bottom: body.top + 18.0,
+    }
+}
+
+/// Individual notification item rectangle in the list view.
+pub fn notification_item_rect(body: D2D_RECT_F, index: usize) -> D2D_RECT_F {
+    let list_top = body.top + 26.0;
+    let item_h = 38.0;
+    let iy = list_top + (index as f32) * (item_h + 6.0);
+    D2D_RECT_F {
+        left: body.left,
+        top: iy,
+        right: body.right,
+        bottom: iy + item_h,
+    }
+}
+
+/// Back button bounds in the detailed notification view.
+pub fn notification_back_button(body: D2D_RECT_F) -> D2D_RECT_F {
+    D2D_RECT_F {
+        left: body.left,
+        top: body.top - 2.0,
+        right: body.left + 58.0,
+        bottom: body.top + 18.0,
+    }
+}
+
+/// Dismiss button bounds in the detailed notification view.
+pub fn notification_dismiss_button(body: D2D_RECT_F) -> D2D_RECT_F {
+    D2D_RECT_F {
+        left: body.right - 72.0,
+        top: body.bottom - 22.0,
+        right: body.right,
+        bottom: body.bottom + 2.0,
+    }
 }

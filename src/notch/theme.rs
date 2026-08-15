@@ -44,6 +44,9 @@ pub struct Palette {
 
     /// Whether this theme wants a blurred capture of the screen behind it.
     pub blur_backdrop: bool,
+
+    /// Downscale factor for the blur capture (e.g. 8 for frosted, 18 for heavy blur).
+    pub blur_downscale: i32,
 }
 
 impl Palette {
@@ -60,6 +63,7 @@ impl Palette {
                 scrim: [0.0, 0.0, 0.0, 1.0],
                 shadow_strength: 1.0,
                 blur_backdrop: false,
+                blur_downscale: 0,
             },
 
             // Not merely the dark ramp inverted: dark-on-light needs more
@@ -76,6 +80,7 @@ impl Palette {
                 scrim: [1.0, 1.0, 1.0, 1.0],
                 shadow_strength: 1.35,
                 blur_backdrop: false,
+                blur_downscale: 0,
             },
 
             // Frosted sits on a live blur of the screen, so its type has to
@@ -92,6 +97,54 @@ impl Palette {
                 scrim: [0.0, 0.0, 0.0, 1.0],
                 shadow_strength: 0.8,
                 blur_backdrop: true,
+                blur_downscale: 8,
+            },
+
+            // Transparent offers pure clear see-through glass without blur.
+            // Crisp edge definition and high-contrast type keep it easily readable over any desktop.
+            NotchTheme::Transparent => Self {
+                edge: [1.0, 1.0, 1.0, 0.28],
+                sheen: [1.0, 1.0, 1.0, 0.22],
+                rule: [1.0, 1.0, 1.0, 0.18],
+                well: [0.0, 0.0, 0.0, 0.20],
+                text_hi: [1.0, 1.0, 1.0, 1.0],
+                text_mid: [0.90, 0.90, 0.94, 1.0],
+                text_lo: [0.72, 0.73, 0.78, 1.0],
+                scrim: [0.0, 0.0, 0.0, 0.85],
+                shadow_strength: 1.1,
+                blur_backdrop: false,
+                blur_downscale: 0,
+            },
+
+            // Blurred uses deep, heavy diffusion blur (downscale factor 18)
+            // for an ultra-smooth, creamy ambient glass look.
+            NotchTheme::Blurred => Self {
+                edge: [1.0, 1.0, 1.0, 0.16],
+                sheen: [1.0, 1.0, 1.0, 0.12],
+                rule: [1.0, 1.0, 1.0, 0.12],
+                well: [1.0, 1.0, 1.0, 0.08],
+                text_hi: [1.0, 1.0, 1.0, 1.0],
+                text_mid: [0.84, 0.85, 0.89, 1.0],
+                text_lo: [0.65, 0.66, 0.70, 1.0],
+                scrim: [0.0, 0.0, 0.0, 1.0],
+                shadow_strength: 0.85,
+                blur_backdrop: true,
+                blur_downscale: 18,
+            },
+
+            // Acrylic offers Windows Fluent Acrylic styling with balanced diffusion and rich ambient tint.
+            NotchTheme::Acrylic => Self {
+                edge: [1.0, 1.0, 1.0, 0.18],
+                sheen: [1.0, 1.0, 1.0, 0.14],
+                rule: [1.0, 1.0, 1.0, 0.12],
+                well: [1.0, 1.0, 1.0, 0.06],
+                text_hi: [0.98, 0.98, 1.0, 1.0],
+                text_mid: [0.82, 0.83, 0.88, 1.0],
+                text_lo: [0.62, 0.63, 0.68, 1.0],
+                scrim: [0.0, 0.0, 0.0, 1.0],
+                shadow_strength: 0.9,
+                blur_backdrop: true,
+                blur_downscale: 12,
             },
         }
     }

@@ -99,18 +99,34 @@ pub enum NotchTheme {
     Dark,
     /// Bone-white panel with dark type, for light desktops.
     Light,
-    /// Translucent, with the screen behind it blurred through the panel.
+    /// Translucent frosted glass, with the screen behind it blurred through the panel.
     Frosted,
+    /// Pure clear see-through glass without backdrop blur.
+    Transparent,
+    /// Deep soft-diffusion blur with smooth ambient background colors.
+    Blurred,
+    /// Windows Fluent Acrylic style with rich ambient tint and balanced diffusion.
+    Acrylic,
 }
 
 impl NotchTheme {
-    pub const ALL: [NotchTheme; 3] = [NotchTheme::Dark, NotchTheme::Light, NotchTheme::Frosted];
+    pub const ALL: [NotchTheme; 6] = [
+        NotchTheme::Dark,
+        NotchTheme::Light,
+        NotchTheme::Frosted,
+        NotchTheme::Transparent,
+        NotchTheme::Blurred,
+        NotchTheme::Acrylic,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             NotchTheme::Dark => "Dark",
             NotchTheme::Light => "Light",
-            NotchTheme::Frosted => "Frosted glass",
+            NotchTheme::Frosted => "Frosted",
+            NotchTheme::Transparent => "Transparent",
+            NotchTheme::Blurred => "Blurred",
+            NotchTheme::Acrylic => "Acrylic",
         }
     }
 
@@ -123,6 +139,9 @@ impl NotchTheme {
             // Low alpha on purpose: the blurred capture behind it supplies
             // most of the body, and this is only the tint on top.
             NotchTheme::Frosted => [0.07, 0.07, 0.09, 0.55],
+            NotchTheme::Transparent => [0.04, 0.04, 0.06, 0.28],
+            NotchTheme::Blurred => [0.06, 0.06, 0.08, 0.60],
+            NotchTheme::Acrylic => [0.09, 0.09, 0.13, 0.70],
         }
     }
 }
@@ -166,15 +185,21 @@ pub enum SlideKind {
     /// Whatever is currently playing in the system's media session, if
     /// anything: title, artist, art, and transport controls.
     Media,
+    /// Notification Center: alerts, task updates, and messages from allowed apps.
+    Notifications,
+    /// Claude Code usage: context window, session cost, and rate limits.
+    Usage,
 }
 
 impl SlideKind {
-    pub const ALL: [SlideKind; 5] = [
+    pub const ALL: [SlideKind; 7] = [
         SlideKind::Status,
         SlideKind::Clock,
         SlideKind::Marquee,
         SlideKind::Wallpaper,
         SlideKind::Media,
+        SlideKind::Notifications,
+        SlideKind::Usage,
     ];
 
     pub fn label(self) -> &'static str {
@@ -184,6 +209,159 @@ impl SlideKind {
             SlideKind::Marquee => "Moving text",
             SlideKind::Wallpaper => "Wallpaper",
             SlideKind::Media => "Now Playing",
+            SlideKind::Notifications => "Notifications",
+            SlideKind::Usage => "Claude Usage",
+        }
+    }
+}
+
+/// Default face the notch shows when collapsed and resting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum CollapsedMode {
+    /// Stays on whichever slide was last viewed in the carousel.
+    #[default]
+    LastActive,
+    /// Resets to Status slide.
+    Status,
+    /// Resets to Clock / Time slide.
+    Clock,
+    /// Resets to Moving Text marquee.
+    Marquee,
+    /// Resets to Wallpaper picture slide.
+    Wallpaper,
+    /// Resets to Now Playing media slide.
+    Media,
+    /// Resets to Notifications unread indicator.
+    Notifications,
+    /// Resets to Claude Code usage slide.
+    Usage,
+    /// Smart / Auto mode: shows active alerts if unread, or Now Playing if music is on, otherwise Clock.
+    Auto,
+}
+
+impl CollapsedMode {
+    pub const ALL: [CollapsedMode; 9] = [
+        CollapsedMode::LastActive,
+        CollapsedMode::Status,
+        CollapsedMode::Clock,
+        CollapsedMode::Marquee,
+        CollapsedMode::Wallpaper,
+        CollapsedMode::Media,
+        CollapsedMode::Notifications,
+        CollapsedMode::Usage,
+        CollapsedMode::Auto,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            CollapsedMode::LastActive => "Last Active",
+            CollapsedMode::Status => "Status",
+            CollapsedMode::Clock => "Clock",
+            CollapsedMode::Marquee => "Moving text",
+            CollapsedMode::Wallpaper => "Wallpaper",
+            CollapsedMode::Media => "Now Playing",
+            CollapsedMode::Notifications => "Notifications",
+            CollapsedMode::Usage => "Claude Usage",
+            CollapsedMode::Auto => "Dynamic / Auto",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum NotificationGlowStyle {
+    #[default]
+    CountdownDrain,
+    RgbBorderMoving,
+    WavyRgbMoving,
+    NeonGlow,
+}
+
+impl NotificationGlowStyle {
+    pub const ALL: [Self; 4] = [
+        Self::CountdownDrain,
+        Self::RgbBorderMoving,
+        Self::WavyRgbMoving,
+        Self::NeonGlow,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CountdownDrain => "Countdown Drain (3-Sided Border)",
+            Self::RgbBorderMoving => "Moving RGB Perimeter",
+            Self::WavyRgbMoving => "Wavy Moving RGB Wave",
+            Self::NeonGlow => "Neon Ambient Bloom",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NotificationConfig {
+    pub enabled: bool,
+    /// Allowed apps whose notifications will trigger the Dynamic Notch alert toast.
+    pub allowed_apps: Vec<String>,
+    /// How long the dynamic alert capsule dwells on screen before settling back (in seconds).
+    pub toast_duration_secs: f32,
+    /// Local HTTP webhook server port for receiving notifications from AI tools & scripts.
+    pub webhook_port: u16,
+    pub sound_enabled: bool,
+    /// Glowing border style when notification alert appears.
+    pub glow_style: NotificationGlowStyle,
+    /// Custom RGBA colors mapped per application name.
+    pub app_colors: std::collections::HashMap<String, [f32; 4]>,
+}
+
+impl Default for NotificationConfig {
+    fn default() -> Self {
+        let mut app_colors = std::collections::HashMap::new();
+        app_colors.insert("Antigravity".to_string(), [0.0, 0.94, 1.0, 1.0]); // #00F0FF Electric Cyan
+        app_colors.insert("Codex".to_string(), [0.06, 0.72, 0.51, 1.0]);    // #10B981 Emerald
+        app_colors.insert("Claude".to_string(), [0.98, 0.45, 0.09, 1.0]);   // #EA580C Terracotta
+        app_colors.insert("Cursor".to_string(), [0.39, 0.40, 0.95, 1.0]);   // #6366F1 Indigo
+        app_colors.insert("Terminal".to_string(), [0.66, 0.33, 0.97, 1.0]); // #A855F7 Purple
+        app_colors.insert("VS Code".to_string(), [0.0, 0.47, 0.83, 1.0]);  // #0078D4 VS Blue
+        app_colors.insert("Slack".to_string(), [0.88, 0.12, 0.35, 1.0]);    // #E01E5A Berry
+        app_colors.insert("Discord".to_string(), [0.35, 0.40, 0.95, 1.0]);  // #5865F2 Blurple
+
+        Self {
+            enabled: true,
+            allowed_apps: vec![
+                "Antigravity".to_string(),
+                "Codex".to_string(),
+                "Claude".to_string(),
+                "Cursor".to_string(),
+                "Terminal".to_string(),
+                "VS Code".to_string(),
+            ],
+            toast_duration_secs: 4.5,
+            webhook_port: 18923,
+            sound_enabled: true,
+            glow_style: NotificationGlowStyle::CountdownDrain,
+            app_colors,
+        }
+    }
+}
+
+impl NotificationConfig {
+    pub fn get_app_color(&self, app: &str) -> [f32; 4] {
+        if let Some(c) = self.app_colors.get(app) {
+            return *c;
+        }
+        for (k, v) in &self.app_colors {
+            if k.eq_ignore_ascii_case(app) {
+                return *v;
+            }
+        }
+        match app.to_lowercase().as_str() {
+            "antigravity" => [0.0, 0.94, 1.0, 1.0],
+            "codex" => [0.06, 0.72, 0.51, 1.0],
+            "claude" => [0.98, 0.45, 0.09, 1.0],
+            "cursor" => [0.39, 0.40, 0.95, 1.0],
+            "terminal" => [0.66, 0.33, 0.97, 1.0],
+            "vs code" | "vscode" => [0.0, 0.47, 0.83, 1.0],
+            "slack" => [0.88, 0.12, 0.35, 1.0],
+            "discord" => [0.35, 0.40, 0.95, 1.0],
+            _ => [0.22, 0.74, 0.97, 1.0],
         }
     }
 }
@@ -374,6 +552,10 @@ pub struct NotchConfig {
     /// The slide the notch rests on when collapsed. Persisted so the notch
     /// comes back showing whatever you last left it on.
     pub active_slide: usize,
+    #[serde(default)]
+    pub default_collapsed: CollapsedMode,
+    #[serde(default)]
+    pub notifications: NotificationConfig,
     pub accent: [f32; 4],
     pub surface: [f32; 4],
     #[serde(default = "default_theme")]
@@ -411,6 +593,8 @@ impl Default for NotchConfig {
             expanded_height: 208,
             slides: SlideKind::ALL.to_vec(),
             active_slide: 0,
+            default_collapsed: CollapsedMode::LastActive,
+            notifications: NotificationConfig::default(),
             accent: [1.0, 0.604, 0.235, 1.0],  // ember
             surface: [0.031, 0.031, 0.043, 0.97], // obsidian
             theme: NotchTheme::Dark,

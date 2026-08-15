@@ -226,6 +226,7 @@ token!(
     sidebar,
     surface,
     surface_hover,
+    surface_active,
     divider,
     text_primary,
     text_secondary,

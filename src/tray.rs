@@ -145,6 +145,26 @@ fn create_app_icon() -> windows::core::Result<HICON> {
 
 pub fn restore_settings_window() {
     SHOW_REQUESTED.store(true, Ordering::SeqCst);
+
+    if let Some(ctx) = crate::gui::get_egui_context() {
+        ctx.request_repaint();
+    }
+
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            AllowSetForegroundWindow, BringWindowToTop, SetForegroundWindow, ShowWindow,
+            SW_RESTORE, SW_SHOW,
+        };
+
+        let _ = AllowSetForegroundWindow(std::process::id());
+
+        if let Some(hwnd) = crate::gui::find_settings_hwnd() {
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = BringWindowToTop(hwnd);
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
 }
 
 impl SystemTray {

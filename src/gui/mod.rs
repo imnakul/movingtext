@@ -7,9 +7,76 @@ use std::sync::Arc;
 
 use crate::config::{AppConfig, NotchAlign, NotchTheme, SlideKind, StatusItem, UiTheme};
 
+mod color_picker;
 mod filedlg;
 mod theme;
 mod wallpaper;
+
+static SETTINGS_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+static EGUI_CTX: parking_lot::RwLock<Option<egui::Context>> = parking_lot::RwLock::new(None);
+
+pub fn get_egui_context() -> Option<egui::Context> {
+    EGUI_CTX.read().clone()
+}
+
+unsafe extern "system" fn enum_windows_callback(
+    hwnd: windows::Win32::Foundation::HWND,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::BOOL {
+    let mut pid = 0u32;
+    windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    if pid == std::process::id() {
+        let mut buffer = [0u16; 512];
+        let len = windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut buffer);
+        if len > 0 {
+            let text = String::from_utf16_lossy(&buffer[..len as usize]);
+            if text.contains("MovingText") && !text.contains("MovingTextTray") {
+                let out_ptr = lparam.0 as *mut isize;
+                *out_ptr = hwnd.0 as isize;
+                return windows::Win32::Foundation::BOOL(0);
+            }
+        }
+    }
+    windows::Win32::Foundation::BOOL(1)
+}
+
+pub unsafe fn find_settings_hwnd() -> Option<windows::Win32::Foundation::HWND> {
+    let raw = SETTINGS_HWND.load(std::sync::atomic::Ordering::SeqCst);
+    if raw != 0 {
+        let hwnd = windows::Win32::Foundation::HWND(raw as *mut _);
+        if windows::Win32::UI::WindowsAndMessaging::IsWindow(hwnd).as_bool() {
+            return Some(hwnd);
+        }
+    }
+
+    let title = windows::core::HSTRING::from("MovingText - Settings");
+    if let Ok(hwnd) = windows::Win32::UI::WindowsAndMessaging::FindWindowW(
+        None,
+        windows::core::PCWSTR(title.as_ptr()),
+    ) {
+        if !hwnd.is_invalid() && hwnd.0 != std::ptr::null_mut() {
+            let mut pid = 0u32;
+            windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid == std::process::id() {
+                SETTINGS_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+                return Some(hwnd);
+            }
+        }
+    }
+
+    let mut found_hwnd_raw: isize = 0;
+    let _ = windows::Win32::UI::WindowsAndMessaging::EnumWindows(
+        Some(enum_windows_callback),
+        windows::Win32::Foundation::LPARAM(&mut found_hwnd_raw as *mut isize as isize),
+    );
+    if found_hwnd_raw != 0 {
+        let hwnd = windows::Win32::Foundation::HWND(found_hwnd_raw as *mut _);
+        SETTINGS_HWND.store(found_hwnd_raw, std::sync::atomic::Ordering::SeqCst);
+        return Some(hwnd);
+    }
+
+    None
+}
 
 
 pub fn setup_custom_fonts(ctx: &egui::Context) {
@@ -133,6 +200,12 @@ const PAGES: &[Page] = &[
         draw: SettingsApp::page_notch_look,
     },
     Page {
+        group: Group::Notch,
+        title: "Notifications",
+        blurb: "Dynamic Notification Center. Filter allowed apps like Antigravity, Codex & Claude, and customize live alert toasts.",
+        draw: SettingsApp::page_notch_notifications,
+    },
+    Page {
         group: Group::Marquee,
         title: "Overview",
         blurb: "Strips of scrolling text pinned to the edges of the screen. Separate from the \
@@ -200,6 +273,7 @@ fn ease_out(t: f32) -> f32 {
 
 impl SettingsApp {
     pub fn new(cc: &eframe::CreationContext<'_>, config: Arc<RwLock<AppConfig>>) -> Self {
+        *EGUI_CTX.write() = Some(cc.egui_ctx.clone());
         setup_custom_fonts(&cc.egui_ctx);
 
         let mut style = (*cc.egui_ctx.style()).clone();
@@ -317,16 +391,21 @@ impl SettingsApp {
                 0.0
             };
 
+            let item_color = if selected {
+                theme::accent()
+            } else {
+                theme::text_secondary()
+            };
+
+            let icon_pos = rect.left_center() + Vec2::new(14.0 + sink, 0.0);
+            paint_sidebar_hugeicon(ui.painter(), page.group, page.title, icon_pos, item_color);
+
             ui.painter().text(
-                rect.left_center() + Vec2::new(15.0 + sink, 0.0),
+                rect.left_center() + Vec2::new(30.0 + sink, 0.0),
                 Align2::LEFT_CENTER,
                 page.title,
                 egui::FontId::proportional(13.0),
-                if selected {
-                    theme::accent()
-                } else {
-                    theme::text_secondary()
-                },
+                item_color,
             );
 
             if response.clicked() {
@@ -418,6 +497,10 @@ impl SettingsApp {
 
     fn page_notch_look(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
         Self::sec_notch_look(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_notch_notifications(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_notch_notifications(ui, cx.cfg, cx.changed);
     }
 
     fn page_edge_overview(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
@@ -958,37 +1041,17 @@ impl SettingsApp {
         Self::section_title(ui, "COLOR");
 
         Self::row_inline(ui, "Text Color", |ui| {
-            let mut fg = Color32::from_rgba_unmultiplied(
-                (cfg.colors.text_color[0] * 255.0) as u8,
-                (cfg.colors.text_color[1] * 255.0) as u8,
-                (cfg.colors.text_color[2] * 255.0) as u8,
-                (cfg.colors.text_color[3] * 255.0) as u8,
-            );
-            if ui.color_edit_button_srgba(&mut fg).changed() {
-                cfg.colors.text_color = [
-                    fg.r() as f32 / 255.0,
-                    fg.g() as f32 / 255.0,
-                    fg.b() as f32 / 255.0,
-                    fg.a() as f32 / 255.0,
-                ];
+            if color_picker::color_picker_button(ui, "edge_text_color", &mut cfg.colors.text_color)
+                .changed()
+            {
                 *changed = true;
             }
         });
 
         Self::row_inline(ui, "Background Color", |ui| {
-            let mut bg = Color32::from_rgba_unmultiplied(
-                (cfg.colors.bg_color[0] * 255.0) as u8,
-                (cfg.colors.bg_color[1] * 255.0) as u8,
-                (cfg.colors.bg_color[2] * 255.0) as u8,
-                (cfg.colors.bg_color[3] * 255.0) as u8,
-            );
-            if ui.color_edit_button_srgba(&mut bg).changed() {
-                cfg.colors.bg_color = [
-                    bg.r() as f32 / 255.0,
-                    bg.g() as f32 / 255.0,
-                    bg.b() as f32 / 255.0,
-                    bg.a() as f32 / 255.0,
-                ];
+            if color_picker::color_picker_button(ui, "edge_bg_color", &mut cfg.colors.bg_color)
+                .changed()
+            {
                 *changed = true;
             }
         });
@@ -1083,6 +1146,276 @@ impl SettingsApp {
         {
             *changed = true;
         }
+
+        ui.add_space(8.0);
+        Self::row_inline(ui, "Default Collapsed Face", |ui| {
+            let current = cfg.notch.default_collapsed;
+            egui::ComboBox::from_id_salt("default_collapsed_face")
+                .selected_text(current.label())
+                .show_ui(ui, |ui| {
+                    for mode in crate::config::CollapsedMode::ALL {
+                        if ui
+                            .selectable_value(&mut cfg.notch.default_collapsed, mode, mode.label())
+                            .clicked()
+                        {
+                            *changed = true;
+                        }
+                    }
+                });
+        });
+        ui.add_space(2.0);
+        ui.label(
+            RichText::new(
+                "When you move your cursor away and the notch collapses, it returns to this face.",
+            )
+            .size(11.0)
+            .color(theme::text_secondary()),
+        );
+    }
+
+    fn sec_notch_notifications(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "DYNAMIC NOTIFICATIONS");
+
+        if ui
+            .checkbox(&mut cfg.notch.notifications.enabled, "Enable Dynamic Notch notifications")
+            .changed()
+        {
+            *changed = true;
+        }
+
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(
+                "When a notification arrives from an allowed app, the notch springs open into a \
+                 dynamic alert capsule, then smoothly settles back.",
+            )
+            .size(11.0)
+            .color(theme::text_secondary()),
+        );
+
+        Self::divider(ui);
+        Self::section_title(ui, "ALLOWED APPS");
+
+        ui.label(
+            RichText::new("Only notifications from these apps will trigger dynamic alerts:")
+                .size(12.0)
+                .color(theme::text_secondary()),
+        );
+        ui.add_space(8.0);
+
+        let presets = [
+            "Antigravity",
+            "Codex",
+            "Claude",
+            "Cursor",
+            "Terminal",
+            "VS Code",
+            "Slack",
+            "Discord",
+        ];
+
+        ui.horizontal_wrapped(|ui| {
+            for preset in presets {
+                let is_allowed = cfg
+                    .notch
+                    .notifications
+                    .allowed_apps
+                    .iter()
+                    .any(|a| a.eq_ignore_ascii_case(preset));
+                if ui.selectable_label(is_allowed, preset).clicked() {
+                    if is_allowed {
+                        cfg.notch
+                            .notifications
+                            .allowed_apps
+                            .retain(|a| !a.eq_ignore_ascii_case(preset));
+                    } else {
+                        cfg.notch
+                            .notifications
+                            .allowed_apps
+                            .push(preset.to_string());
+                    }
+                    crate::notch::notify::update_server_allowed_apps(
+                        cfg.notch.notifications.allowed_apps.clone(),
+                    );
+                    *changed = true;
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.label(
+            RichText::new(format!(
+                "Active whitelist: {}",
+                if cfg.notch.notifications.allowed_apps.is_empty() {
+                    "All apps allowed (whitelist empty)".to_string()
+                } else {
+                    cfg.notch.notifications.allowed_apps.join(", ")
+                }
+            ))
+            .size(11.0)
+            .color(theme::text_tertiary()),
+        );
+
+        Self::divider(ui);
+        Self::section_title(ui, "ALERT SETTINGS");
+
+        Self::row_inline(ui, "Toast duration", |ui| {
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut cfg.notch.notifications.toast_duration_secs,
+                        2.0..=10.0,
+                    )
+                    .suffix(" s")
+                    .step_by(0.5),
+                )
+                .changed()
+            {
+                *changed = true;
+            }
+        });
+
+        ui.add_space(8.0);
+        Self::row_inline(ui, "Alert Border Animation", |ui| {
+            let current = cfg.notch.notifications.glow_style;
+            egui::ComboBox::from_id_salt("notif_glow_style")
+                .selected_text(current.label())
+                .show_ui(ui, |ui| {
+                    for style in crate::config::NotificationGlowStyle::ALL {
+                        if ui
+                            .selectable_value(
+                                &mut cfg.notch.notifications.glow_style,
+                                style,
+                                style.label(),
+                            )
+                            .clicked()
+                        {
+                            *changed = true;
+                        }
+                    }
+                });
+        });
+        ui.add_space(2.0);
+        ui.label(
+            RichText::new(
+                "When a notification arrives, a glowing border lights up around the 3 sides of the notch \
+                 and dynamically drains down as the visual countdown timer.",
+            )
+            .size(11.0)
+            .color(theme::text_secondary()),
+        );
+
+        Self::divider(ui);
+        Self::section_title(ui, "PROGRAM COLORS");
+
+        ui.label(
+            RichText::new("Custom glowing badge & border colors for each application:")
+                .size(12.0)
+                .color(theme::text_secondary()),
+        );
+        ui.add_space(6.0);
+
+        let app_list = [
+            "Antigravity",
+            "Codex",
+            "Claude",
+            "Cursor",
+            "Terminal",
+            "VS Code",
+            "Slack",
+            "Discord",
+        ];
+        for app in app_list {
+            let mut current_color = cfg.notch.notifications.get_app_color(app);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(app).size(13.0).color(theme::text_primary()));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .color_edit_button_rgba_unmultiplied(&mut current_color)
+                        .changed()
+                    {
+                        cfg.notch
+                            .notifications
+                            .app_colors
+                            .insert(app.to_string(), current_color);
+                        *changed = true;
+                    }
+                });
+            });
+            ui.add_space(2.0);
+        }
+
+        Self::divider(ui);
+        Self::section_title(ui, "INTEGRATION & TEST");
+
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new("Local Webhook Server:")
+                    .size(12.0)
+                    .color(theme::text_primary()),
+            );
+            ui.label(
+                RichText::new(format!(
+                    "http://127.0.0.1:{}/notify",
+                    cfg.notch.notifications.webhook_port
+                ))
+                .size(12.0)
+                .color(theme::text_tertiary())
+                .monospace(),
+            );
+        });
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(
+                "AI agents (Antigravity, Codex, Claude) and CLI scripts can send POST requests with JSON \
+                 {\"app\":\"Antigravity\",\"title\":\"Task Finished\",\"body\":\"Ready to review\"} directly.",
+            )
+            .size(11.0)
+            .color(theme::text_secondary()),
+        );
+
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            if ui
+                .button(RichText::new("🚀 Send Antigravity Test Alert").strong())
+                .clicked()
+            {
+                let notif_store = crate::notch::notify::global_store();
+                let dur = cfg.notch.notifications.toast_duration_secs;
+                let allowed = &cfg.notch.notifications.allowed_apps;
+                notif_store.write().push(
+                    "Antigravity",
+                    "Task Completed",
+                    "Dynamic Notch glowing drain border & Hugeicons are active with 0 errors.",
+                    crate::notch::notify::NotificationLevel::Success,
+                    dur,
+                    allowed,
+                );
+            }
+
+            ui.add_space(8.0);
+
+            if ui.button("⚡ Send Claude Alert").clicked() {
+                let notif_store = crate::notch::notify::global_store();
+                let dur = cfg.notch.notifications.toast_duration_secs;
+                let allowed = &cfg.notch.notifications.allowed_apps;
+                notif_store.write().push(
+                    "Claude",
+                    "Detailed Card Inspection",
+                    "Clicking this toast will expand the detailed view in Notification Center!",
+                    crate::notch::notify::NotificationLevel::Info,
+                    dur,
+                    allowed,
+                );
+            }
+
+            ui.add_space(8.0);
+
+            if ui.button("Clear All").clicked() {
+                let notif_store = crate::notch::notify::global_store();
+                notif_store.write().clear_all();
+            }
+        });
     }
 
     fn sec_notch_deck(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
@@ -1315,10 +1648,10 @@ impl SettingsApp {
 
         Self::row_stacked(
             ui,
-            "Theme",
-            Some("Sets the whole panel — surface, type ramp and shadow together."),
+            "Theme & Surface Style",
+            Some("Sets the notch panel finish — solid bezels or live glass treatments (Frosted, Transparent, Blurred, Acrylic)."),
             |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for theme in NotchTheme::ALL {
                         let selected = cfg.notch.theme == theme;
                         if ui.selectable_label(selected, theme.label()).clicked() && !selected {
@@ -1669,19 +2002,7 @@ impl SettingsApp {
         changed: &mut bool,
     ) {
         Self::row_inline(ui, label, |ui| {
-            let mut c = Color32::from_rgba_unmultiplied(
-                (value[0] * 255.0) as u8,
-                (value[1] * 255.0) as u8,
-                (value[2] * 255.0) as u8,
-                (value[3] * 255.0) as u8,
-            );
-            if ui.color_edit_button_srgba(&mut c).changed() {
-                *value = [
-                    c.r() as f32 / 255.0,
-                    c.g() as f32 / 255.0,
-                    c.b() as f32 / 255.0,
-                    c.a() as f32 / 255.0,
-                ];
+            if color_picker::color_picker_button(ui, label, value).changed() {
                 *changed = true;
             }
         });
@@ -1698,6 +2019,12 @@ impl SettingsApp {
 
 impl eframe::App for SettingsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if SETTINGS_HWND.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+            unsafe {
+                let _ = find_settings_hwnd();
+            }
+        }
+
         if ctx.input(|i| i.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
@@ -1705,7 +2032,9 @@ impl eframe::App for SettingsApp {
 
         if crate::tray::SHOW_REQUESTED.swap(false, std::sync::atomic::Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            ctx.request_repaint();
         }
 
         let mut config_changed = false;
@@ -1885,5 +2214,123 @@ impl eframe::App for SettingsApp {
         }
 
         ctx.request_repaint_after(std::time::Duration::from_millis(50));
+    }
+}
+
+/// Renders authentic Hugeicons stroke vector icons for each sidebar rail item.
+fn paint_sidebar_hugeicon(
+    painter: &egui::Painter,
+    group: Group,
+    title: &str,
+    center: egui::Pos2,
+    color: egui::Color32,
+) {
+    let stroke = egui::Stroke::new(1.35, color);
+    let (cx, cy) = (center.x, center.y);
+
+    match (group, title) {
+        (Group::Notch, "Overview") => {
+            // Hugeicons: Notch Capsule Dashboard
+            let rect = egui::Rect::from_center_size(center, egui::vec2(13.0, 7.0));
+            painter.rect_stroke(rect, egui::Rounding::same(3.5), stroke);
+            painter.circle_filled(center, 1.2, color);
+        }
+        (Group::Notch, "Slides") => {
+            // Hugeicons: Layers / Stacked Cards
+            let r1 = egui::Rect::from_center_size(center + egui::vec2(-1.5, -1.5), egui::vec2(9.5, 7.5));
+            let r2 = egui::Rect::from_center_size(center + egui::vec2(1.5, 1.5), egui::vec2(9.5, 7.5));
+            painter.rect_stroke(r1, egui::Rounding::same(2.0), stroke);
+            painter.rect_stroke(r2, egui::Rounding::same(2.0), stroke);
+        }
+        (Group::Notch, "Status") => {
+            // Hugeicons: Checklist Task
+            let rect = egui::Rect::from_center_size(center, egui::vec2(12.5, 12.5));
+            painter.rect_stroke(rect, egui::Rounding::same(3.0), stroke);
+            painter.line_segment([egui::pos2(cx - 3.2, cy), egui::pos2(cx - 1.0, cy + 2.2)], stroke);
+            painter.line_segment([egui::pos2(cx - 1.0, cy + 2.2), egui::pos2(cx + 3.2, cy - 2.2)], stroke);
+        }
+        (Group::Notch, "Wallpaper") => {
+            // Hugeicons: Photo Frame
+            let rect = egui::Rect::from_center_size(center, egui::vec2(13.0, 11.0));
+            painter.rect_stroke(rect, egui::Rounding::same(2.5), stroke);
+            painter.line_segment([egui::pos2(cx - 4.2, cy + 2.8), egui::pos2(cx - 1.0, cy - 1.0)], stroke);
+            painter.line_segment([egui::pos2(cx - 1.0, cy - 1.0), egui::pos2(cx + 2.0, cy + 2.0)], stroke);
+            painter.line_segment([egui::pos2(cx + 1.0, cy + 1.0), egui::pos2(cx + 4.2, cy - 1.5)], stroke);
+            painter.circle_filled(egui::pos2(cx + 2.5, cy - 2.5), 1.1, color);
+        }
+        (Group::Notch, "Moving Text") => {
+            // Hugeicons: Typographic 'T' with motion speed dashes
+            painter.line_segment([egui::pos2(cx - 3.2, cy - 4.0), egui::pos2(cx + 3.2, cy - 4.0)], stroke);
+            painter.line_segment([egui::pos2(cx, cy - 4.0), egui::pos2(cx, cy + 4.0)], stroke);
+            painter.line_segment([egui::pos2(cx - 5.5, cy + 1.2), egui::pos2(cx - 2.5, cy + 1.2)], stroke);
+            painter.line_segment([egui::pos2(cx - 6.5, cy - 1.5), egui::pos2(cx - 4.5, cy - 1.5)], stroke);
+        }
+        (Group::Notch, "Size & Place") => {
+            // Hugeicons: Maximize Frame Corner Brackets
+            let s = 5.0;
+            painter.line_segment([egui::pos2(cx - s, cy - s + 3.0), egui::pos2(cx - s, cy - s)], stroke);
+            painter.line_segment([egui::pos2(cx - s, cy - s), egui::pos2(cx - s + 3.0, cy - s)], stroke);
+            painter.line_segment([egui::pos2(cx + s, cy + s - 3.0), egui::pos2(cx + s, cy + s)], stroke);
+            painter.line_segment([egui::pos2(cx + s, cy + s), egui::pos2(cx + s - 3.0, cy + s)], stroke);
+            painter.circle_filled(center, 1.2, color);
+        }
+        (Group::Notch, "Appearance") => {
+            // Hugeicons: Paint Palette
+            painter.circle_stroke(center, 5.5, stroke);
+            painter.circle_filled(egui::pos2(cx - 2.2, cy - 1.8), 1.1, color);
+            painter.circle_filled(egui::pos2(cx + 2.2, cy - 1.8), 1.1, color);
+            painter.circle_filled(egui::pos2(cx, cy + 2.2), 1.1, color);
+        }
+        (Group::Notch, "Notifications") => {
+            // Hugeicons: Notification Bell
+            painter.line_segment([egui::pos2(cx - 4.2, cy + 2.5), egui::pos2(cx + 4.2, cy + 2.5)], stroke);
+            painter.line_segment([egui::pos2(cx - 3.2, cy + 2.5), egui::pos2(cx - 2.2, cy - 2.2)], stroke);
+            painter.line_segment([egui::pos2(cx + 3.2, cy + 2.5), egui::pos2(cx + 2.2, cy - 2.2)], stroke);
+            painter.line_segment([egui::pos2(cx - 2.2, cy - 2.2), egui::pos2(cx + 2.2, cy - 2.2)], stroke);
+            painter.circle_filled(egui::pos2(cx, cy + 3.8), 1.1, color);
+            painter.circle_stroke(egui::pos2(cx, cy - 3.5), 0.9, stroke);
+        }
+        (Group::Marquee, "Overview") => {
+            // Hugeicons: Desktop Display Monitor
+            let screen = egui::Rect::from_center_size(center + egui::vec2(0.0, -1.2), egui::vec2(13.0, 9.0));
+            painter.rect_stroke(screen, egui::Rounding::same(2.0), stroke);
+            painter.line_segment([egui::pos2(cx, cy + 3.3), egui::pos2(cx, cy + 5.2)], stroke);
+            painter.line_segment([egui::pos2(cx - 2.8, cy + 5.2), egui::pos2(cx + 2.8, cy + 5.2)], stroke);
+        }
+        (Group::Marquee, "Message") => {
+            // Hugeicons: Chat Message Bubble
+            let bubble = egui::Rect::from_center_size(center + egui::vec2(0.0, -0.8), egui::vec2(12.5, 9.5));
+            painter.rect_stroke(bubble, egui::Rounding::same(2.5), stroke);
+            painter.line_segment([egui::pos2(cx - 3.2, cy - 0.8), egui::pos2(cx + 3.2, cy - 0.8)], stroke);
+            painter.line_segment([egui::pos2(cx - 2.8, cy + 4.0), egui::pos2(cx - 1.0, cy + 5.8)], stroke);
+        }
+        (Group::Marquee, "Appearance") => {
+            // Hugeicons: Paintbrush
+            painter.line_segment([egui::pos2(cx - 3.8, cy + 3.8), egui::pos2(cx + 3.2, cy - 3.2)], egui::Stroke::new(1.6, color));
+            painter.circle_filled(egui::pos2(cx - 3.8, cy + 3.8), 1.8, color);
+            painter.line_segment([egui::pos2(cx + 1.8, cy - 1.8), egui::pos2(cx + 4.2, cy - 4.2)], stroke);
+        }
+        (Group::Marquee, "Motion") => {
+            // Hugeicons: Activity Wave
+            painter.line_segment([egui::pos2(cx - 5.5, cy), egui::pos2(cx - 2.8, cy)], stroke);
+            painter.line_segment([egui::pos2(cx - 2.8, cy), egui::pos2(cx - 1.0, cy - 4.0)], stroke);
+            painter.line_segment([egui::pos2(cx - 1.0, cy - 4.0), egui::pos2(cx + 1.2, cy + 4.0)], stroke);
+            painter.line_segment([egui::pos2(cx + 1.2, cy + 4.0), egui::pos2(cx + 3.0, cy)], stroke);
+            painter.line_segment([egui::pos2(cx + 3.0, cy), egui::pos2(cx + 5.5, cy)], stroke);
+        }
+        (Group::App, "Preferences") => {
+            // Hugeicons: Settings Gear
+            painter.circle_stroke(center, 3.8, stroke);
+            painter.circle_filled(center, 1.2, color);
+            for i in 0..6 {
+                let angle = (i as f32) * (std::f32::consts::PI / 3.0);
+                let p1 = center + egui::vec2(angle.cos() * 3.8, angle.sin() * 3.8);
+                let p2 = center + egui::vec2(angle.cos() * 5.8, angle.sin() * 5.8);
+                painter.line_segment([p1, p2], stroke);
+            }
+        }
+        _ => {
+            painter.circle_stroke(center, 3.0, stroke);
+        }
     }
 }

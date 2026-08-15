@@ -394,10 +394,16 @@ impl NotchWindow {
         let (open_w, open_h) = self.blended_size(cfg, slide_expanded_size);
         let (shut_w, shut_h) = self.blended_size(cfg, slide_collapsed_size);
 
-        let w = lerp(shut_w, open_w, t);
-        let h = lerp(shut_h, open_h, t);
+        let tp = self.state.toast_progress.value.clamp(0.0, 1.0);
+        let toast_w = 380.0;
+        let toast_h = 44.0;
+        let base_w = lerp(shut_w, toast_w, tp);
+        let base_h = lerp(shut_h, toast_h, tp);
 
-        let collapsed_radius = (shut_h * 0.5).min(18.0);
+        let w = lerp(base_w, open_w, t);
+        let h = lerp(base_h, open_h, t);
+
+        let collapsed_radius = (base_h * 0.5).min(20.0);
         let radius_bottom = lerp(collapsed_radius, theme::RADIUS_EXPANDED, t);
 
         // Fused to the bezel: square top with concave shoulders. Detached or
@@ -435,8 +441,8 @@ impl NotchWindow {
     /// largest panel any slide could open put a black slab the size of the
     /// open panel into every screenshot, even while the notch sat collapsed.
     fn visible_rect(&self, shape: &NotchShape) -> RECT {
-        // +2 for the rounding either side of the fractional shape edges.
-        let reach = theme::shadow_spread(self.state.expand.value) * 1.25 + 2.0;
+        // +2 for the rounding either side of the fractional shape edges, with safety margin for neon bloom.
+        let reach = (theme::shadow_spread(self.state.expand.value) * 1.25 + 2.0).max(18.0);
 
         let left = (shape.left - reach).floor().max(0.0) as i32;
         let top = (shape.top - reach).floor().max(0.0) as i32;
@@ -480,11 +486,14 @@ impl NotchWindow {
             self.painter.invalidate_image();
         }
 
-        // The frosted theme samples the desktop behind the notch. If the notch
+        // Themes with live backdrop blur sample the desktop behind the notch. If the notch
         // were part of that sample it would re-blur its own last frame every
         // frame and smear into feedback within a second, so it takes itself
-        // out of screen capture for as long as that theme is selected.
-        let wants_exclusion = matches!(cfg.notch.theme, NotchTheme::Frosted);
+        // out of screen capture for as long as a glass blur theme is selected.
+        let wants_exclusion = matches!(
+            cfg.notch.theme,
+            NotchTheme::Frosted | NotchTheme::Blurred | NotchTheme::Acrylic
+        );
         if wants_exclusion != self.capture_excluded {
             let applied = if wants_exclusion {
                 backdrop::exclude_from_capture(self.hwnd)
@@ -496,7 +505,7 @@ impl NotchWindow {
             } else if wants_exclusion {
                 eprintln!(
                     "[notch] cannot hide the notch from screen capture; \
-                     the frosted theme will show its tint without the blur"
+                     the glass theme will show its tint without the blur"
                 );
                 // Leave the flag false: the painter checks it before sampling.
                 self.capture_excluded = false;
@@ -573,6 +582,20 @@ impl NotchWindow {
         let target = self.state.set_hovered(hovered, delay);
         self.state.tick(cfg, target, dt);
 
+        // Advance notifications and dynamic toast spring
+        let notif_store = crate::notch::notify::global_store();
+        notif_store.write().tick(dt);
+        let has_toast = notif_store.read().active_toast.is_some();
+        let toast_target = if has_toast && !self.state.is_open() { 1.0 } else { 0.0 };
+        self.state.toast_progress.step(toast_target, dt);
+
+        // Reset to default collapsed slide on collapse
+        if target == 0.0 && self.state.expand.value <= 0.05 {
+            let media_playing = self.painter.media.snapshot().playing;
+            let unread = notif_store.read().unread_count() > 0;
+            self.state.apply_default_collapsed(cfg, media_playing, unread);
+        }
+
         // Persist the resting slide so the notch comes back where it was.
         if self.state.dirty {
             cfg.notch.active_slide = self.state.active;
@@ -611,14 +634,38 @@ impl NotchWindow {
 
     fn handle_click(&mut self, cfg: &AppConfig, cx: f32, cy: f32, shape: NotchShape) {
         if !self.state.is_open() {
+            // Clicked on collapsed alert toast -> expand into notifications slide and show detailed view!
+            let notif_store = crate::notch::notify::global_store();
+            let toast_opt = notif_store.read().active_toast.clone();
+            if let Some(toast) = toast_opt {
+                let slides = cfg.notch.effective_slides();
+                if let Some(idx) = slides
+                    .iter()
+                    .position(|s| *s == crate::config::SlideKind::Notifications)
+                {
+                    self.state.active = idx;
+                }
+                self.state.selected_notification_id = Some(toast.notification.id);
+                self.state.pinned = true;
+                notif_store.write().dismiss_toast();
+                self.state.expand.set(1.0);
+            }
+            return;
+        }
+
+        // Settings launcher button: opens the Settings panel
+        let (sx, sy, sr) = shape.settings_button();
+        let hit_s = sr + 5.0;
+        if (cx - sx) * (cx - sx) + (cy - sy) * (cy - sy) <= hit_s * hit_s {
+            crate::tray::restore_settings_window();
             return;
         }
 
         // Pin toggle lives above whatever slide is showing, so it is checked
         // before any per-slide hit-testing below.
         let (px, py, pr) = shape.pin_button();
-        let hit = pr + 5.0; // a little slop past the drawn ring
-        if (cx - px) * (cx - px) + (cy - py) * (cy - py) <= hit * hit {
+        let hit_p = pr + 5.0; // a little slop past the drawn ring
+        if (cx - px) * (cx - px) + (cy - py) * (cy - py) <= hit_p * hit_p {
             self.state.toggle_pinned();
             return;
         }
@@ -627,6 +674,53 @@ impl NotchWindow {
         let Some(slide) = slides.get(self.state.active) else {
             return;
         };
+
+        if *slide == crate::config::SlideKind::Notifications {
+            let body = crate::notch::geom::slide_body(shape);
+            let notif_store = crate::notch::notify::global_store();
+
+            // If a notification is currently expanded into detailed view:
+            if let Some(sel_id) = self.state.selected_notification_id {
+                let back = crate::notch::geom::notification_back_button(body);
+                if cx >= back.left && cx <= back.right && cy >= back.top && cy <= back.bottom {
+                    self.state.selected_notification_id = None;
+                    return;
+                }
+
+                let dismiss = crate::notch::geom::notification_dismiss_button(body);
+                if cx >= dismiss.left
+                    && cx <= dismiss.right
+                    && cy >= dismiss.top
+                    && cy <= dismiss.bottom
+                {
+                    notif_store.write().dismiss_item(sel_id);
+                    self.state.selected_notification_id = None;
+                    return;
+                }
+                return;
+            }
+
+            // Normal list view:
+            let clr = crate::notch::geom::notification_clear_button(body);
+            if cx >= clr.left && cx <= clr.right && cy >= clr.top && cy <= clr.bottom {
+                notif_store.write().clear_all();
+                return;
+            }
+
+            // Hit test individual notification card rows to open detailed view:
+            let store = notif_store.read();
+            let max_items = 3.min(store.items.len());
+            for i in 0..max_items {
+                let r = crate::notch::geom::notification_item_rect(body, i);
+                if cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom {
+                    if let Some(item) = store.items.get(i) {
+                        self.state.selected_notification_id = Some(item.id);
+                        return;
+                    }
+                }
+            }
+            return;
+        }
 
         // Transport buttons live along the bottom of the Now Playing slide;
         // same squared-distance-plus-slop hit test as the pin button above.

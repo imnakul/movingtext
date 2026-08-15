@@ -1,0 +1,11 @@
+{
+  "notch-notify": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"E:\\Developing\\OpenSource\\movingborder\\scripts\\notch-hooks\\antigravity-notify.ps1\"",
+        "timeout": 5
+      }
+    ]
+  }
+}

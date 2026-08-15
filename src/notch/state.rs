@@ -18,6 +18,8 @@ const FLASH_SECONDS: f32 = 1.6;
 pub struct NotchState {
     /// 0 = collapsed pill, 1 = fully open panel.
     pub expand: Spring,
+    /// 0 = normal collapsed/expanded, 1 = dynamic alert pill toast.
+    pub toast_progress: Spring,
     /// Continuous carousel position; settles on `active`.
     pub carousel: Spring,
     /// The slide the notch rests on.
@@ -42,7 +44,10 @@ pub struct NotchState {
     pub marquee_offset: f32,
 
     /// Free-running clock for ambient motion (the accent pulse).
-    elapsed: f32,
+    pub elapsed: f32,
+
+    /// Currently inspected notification in Notification Center expanded slide.
+    pub selected_notification_id: Option<u64>,
 
     /// Set when something the user changed needs writing back to disk.
     pub dirty: bool,
@@ -60,6 +65,7 @@ impl NotchState {
             // Stiff enough to feel immediate, damped just under critical so it
             // arrives with the faintest settle rather than a dead stop.
             expand: Spring::new(0.0, 200.0, 26.0),
+            toast_progress: Spring::new(0.0, 220.0, 28.0),
             carousel: Spring::new(active as f32, 230.0, 30.0),
             active,
             hovered: false,
@@ -71,6 +77,7 @@ impl NotchState {
             caret_clock: 0.0,
             marquee_offset: 0.0,
             elapsed: 0.0,
+            selected_notification_id: None,
             dirty: false,
             click_through_flash: 0.0,
         }
@@ -87,6 +94,44 @@ impl NotchState {
         // the collapse grace period now, not carry on looking "hovered".
         if !self.pinned && !self.hovered {
             self.left_at = Some(Instant::now());
+        }
+    }
+
+    /// Reset active slide to the user's default_collapsed setting upon collapse.
+    pub fn apply_default_collapsed(
+        &mut self,
+        cfg: &AppConfig,
+        media_active: bool,
+        unread_notifs: bool,
+    ) {
+        use crate::config::CollapsedMode;
+        let slides = cfg.notch.effective_slides();
+        let target_kind = match cfg.notch.default_collapsed {
+            CollapsedMode::LastActive => return,
+            CollapsedMode::Status => SlideKind::Status,
+            CollapsedMode::Clock => SlideKind::Clock,
+            CollapsedMode::Marquee => SlideKind::Marquee,
+            CollapsedMode::Wallpaper => SlideKind::Wallpaper,
+            CollapsedMode::Media => SlideKind::Media,
+            CollapsedMode::Notifications => SlideKind::Notifications,
+            CollapsedMode::Usage => SlideKind::Usage,
+            CollapsedMode::Auto => {
+                if unread_notifs && slides.contains(&SlideKind::Notifications) {
+                    SlideKind::Notifications
+                } else if media_active && slides.contains(&SlideKind::Media) {
+                    SlideKind::Media
+                } else if slides.contains(&SlideKind::Clock) {
+                    SlideKind::Clock
+                } else {
+                    SlideKind::Status
+                }
+            }
+        };
+
+        if let Some(idx) = slides.iter().position(|s| *s == target_kind) {
+            if self.active != idx {
+                self.active = idx;
+            }
         }
     }
 

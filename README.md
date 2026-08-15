@@ -9,51 +9,97 @@
   <img src="https://img.shields.io/badge/built%20with-Rust-orange.svg?style=flat-square" alt="Built with Rust">
 </p>
 
-## What it is
+## Overview
 
-MovingText is a small Windows desktop utility that scrolls a text message along the edges of your screen, like an always-on-top marquee. It sits quietly at the edge of your attention: never blocking your work, never asking to be clicked, just gently repeating whatever you told it to say.
+MovingText is a high-performance Windows desktop enhancement suite built in Rust. It combines a customizable scrolling edge marquee for ambient reminders with an interactive Dynamic Island (Notch) HUD for quick status, media playback controls, clock display, and desktop utilities.
 
-Think of it as a permanent, ambient sticky note that never leaves your screen and never gets buried under a stack of windows.
+The application operates locally with zero telemetry, zero cloud dependencies, and minimal system resource footprint, rendering via hardware-accelerated Direct2D and DirectWrite.
 
-## The problem it solves
+## Core Features
 
-Reminders that live inside an app get closed with the app. Sticky notes on your monitor bezel do not update themselves. Calendar notifications interrupt you once and then disappear.
+### 1. Dynamic Island / Notch HUD
+- **Interactive Bezel Panel**: Sits flush at the top or bottom of your monitor, expanding smoothly on hover with spring physics animations.
+- **Carousel Slides**:
+  - **Status Slide**: Displays daily focus priorities and checklist items with clean status pills.
+  - **Clock Slide**: Oversized digital clock with 12-hour or 24-hour formats and date presentation.
+  - **Media Controls Slide**: Windows System Media Transport Controls (SMTC) integration displaying current track title, artist, live playback status, and interactive controls (play, pause, next, previous).
+  - **Photo and Visual Slide**: Framed wallpaper preview and image rendering via Windows Imaging Component (WIC).
+  - **Marquee Quick Slide**: Displays active scrolling message text inside the notch.
+- **Pin Mode**: Lock the island in an expanded state so it remains open while you work.
+- **Mouse Wheel Navigation**: Scroll over the notch to cycle through slides seamlessly.
+- **Click-Through Option**: Optional pass-through mode allows mouse clicks to reach underlying applications while preserving hover activation.
 
-MovingText solves a narrower, quieter problem: keeping one short piece of text permanently and unobtrusively visible, regardless of what else is open, without stealing focus, without a popup, and without a sound.
+### 2. Glass Finishes and Surface Themes
+- **Frosted Glass**: Balanced live background blur with specular rim highlight and subtle translucent tinting.
+- **Transparent (Clear Glass)**: Crystal-clear see-through glass with zero blur, subtle specular borders, and high-contrast typography.
+- **Blurred (Heavy Diffusion)**: Deep Gaussian-style diffusion blur that blends background windows into smooth ambient gradients.
+- **Acrylic**: Windows Fluent Acrylic style with balanced diffusion and rich ambient tinting.
+- **Dark (Obsidian)**: Deep dark panel engineered to blend into physical laptop bezels and dark wallpapers.
+- **Light (Bone White)**: Clean white panel with dark typography for light desktop environments.
+- **DWM Capture Exclusion**: Prevents recursive capture feedback loops by isolating the notch from desktop sampling during live blur rendering.
 
-## Who it is for
+### 3. Scrolling Edge Marquee
+- **Multi-Edge Support**: Run the scrolling marquee along any combination of the Top, Bottom, Left, and Right screen edges.
+- **Typography and Script Support**: Full Unicode rendering via DirectWrite supporting Latin, Devanagari, CJK scripts, and symbols.
+- **Geometry Controls**: Configurable strip thickness, edge clearance padding (to avoid covering taskbars or window title bars), phrase spacing, and scroll speed/direction.
+- **Window Layering**: Full Always-on-Top support and transparent click-through mode.
 
-- **Knowledge workers and creatives** who want a standing reminder ("take a break", "ship the draft", "call mom") that survives switching between a dozen other windows.
-- **People building focus habits** who want a visible, low-friction nudge instead of another notification to dismiss.
-- **Anyone who wants a lightweight, no-account, no-cloud, fully local Windows utility.** MovingText has no network calls, no telemetry, and no login. It reads a config file and draws some text.
+### 4. Custom Modern Color Panel
+- **Figma-Grade Color Editor**: Replaces stock color pickers with a dedicated, precision color management suite.
+- **Interactive Trigger Capsule**: Displays real-time color swatches with checkerboard transparency underlays and hex code indicators.
+- **2D Saturation/Value Canvas**: Hardware-accelerated bilinear gradient mesh with dual-ring precision reticle.
+- **Spectrum Hue and Alpha Sliders**: Continuous 12-segment rainbow spectrum slider and transparency slider with live percentage readouts.
+- **Multi-Format Input Modes**:
+  - **HEX**: Hex code input with quick-copy clipboard button and opacity drag values.
+  - **RGB**: Individual 0 to 255 channels for Red, Green, Blue, and Alpha.
+  - **HSV**: Intuitive degree and percentage channels (0 to 360 degrees Hue, 0 to 100 percent Saturation and Value).
+- **Curated Swatches Palette**: Instant one-click presets covering modern dark tones, light neutrals, and vivid accents.
 
-## Features
+### 5. Theme and Wallpaper Engine
+- **Wallpaper Color Extraction**: Samples current desktop wallpaper or imported images to extract dominant accent tones.
+- **Adaptive UI Themes**: Switch settings UI between System, Light, and Dark palettes with smooth 200ms cross-fade animations.
+- **Native File Dialog**: Import custom images and wallpapers via native Windows Shell API.
 
-- Scrolling text along any combination of the top, bottom, left, and right screen edges, each independently toggled.
-- Adjustable scroll speed, direction, phrase spacing, and strip thickness.
-- Full font control: family, size, bold, italic, and independent text and background colors (including transparency).
-- Full Unicode support, including Devanagari and Hindi, CJK scripts, and emoji.
-- Configurable clearance padding per edge, so the marquee does not overlap window controls or the taskbar.
-- Optional click-through mode, so the marquee never intercepts a mouse click.
-- Always-on-top toggle.
-- Minimizes to the system tray instead of cluttering the taskbar, with the marquee continuing to run in the background.
-- Settings are saved automatically to a local JSON file. No account, no cloud sync, nothing leaves your machine.
+### 6. System Tray and Window Management
+- **Background Execution**: Closing or hiding the settings window minimizes the application to the Windows notification area (System Tray).
+- **Quick Tray Menu**: Left-click to open settings, right-click to access quick toggles for the Notch, Edge Marquee, or application exit.
+- **Single-Instance Management**: Ensures reliable window restoration and foreground focusing without duplicate processes.
 
-## Screenshot
+### 7. Notification Hub and Agent Hooks
+- **Live Desktop Alerts**: Dynamic toast notifications expand smoothly out of the collapsed notch with spring physics.
+- **Notifications Slide**: Dedicated notification center slide with unread badges, card inspection, individual dismissal, and batch clear options.
+- **Developer and AI Agent Integration**: CLI scripts in `scripts/notch-hooks/` enable external tools, build scripts, and AI agents (such as Antigravity, Claude Code, and Codex) to deliver instant desktop HUD alerts directly to the notch.
 
-<p align="center">
-  <img src="assets/screenshot.png" alt="MovingText settings panel" width="820">
-</p>
+## How to Use Features
 
-## Installing
+### Using the Dynamic Island (Notch)
+1. **Expanding the Panel**: Move your mouse cursor to the top center of your screen. The notch will smoothly expand.
+2. **Switching Slides**: Use your mouse scroll wheel while hovering over the notch to walk through active slides (Status, Clock, Media, Photo, Marquee).
+3. **Pinning Open**: Click the small circle icon on the right side of the expanded panel to pin it open. Click again to unpin and allow auto-collapse on mouse leave.
+4. **Controlling Media**: When music or videos are playing on Windows, switch to the Media slide to control playback or view track titles and artists.
+5. **Adjusting Placement**: In Settings > Notch, change the alignment (Top or Bottom), monitor target, width, height, and vertical offset.
 
-### Option 1: download a build
+### Configuring Edge Marquee
+1. Open Settings > Text to enter your custom reminder, quote, or note.
+2. Open Settings > Appearance to toggle which screen edges are active (Top, Bottom, Left, Right).
+3. Adjust thickness and clearance padding so the marquee sits neatly outside your taskbar and window borders.
+4. Set custom colors and opacity using the Color Panel.
+5. In Settings > Behavior, adjust scroll speed, direction (forward/reverse), and click-through options.
 
-Grab the latest `movingtext-vX.Y.Z.exe` from the [Releases](../../releases) page and run it. No installer, no admin rights required.
+### Customizing Colors and Themes
+1. Open any color setting (e.g. Accent Color, Panel Color, Marquee Text Color).
+2. Click the color capsule to reveal the modern Color Panel.
+3. Drag inside the 2D gradient box to adjust saturation and brightness.
+4. Slide the rainbow bar to change Hue, and slide the checkerboard bar to set opacity.
+5. Switch between HEX, RGB, and HSV tabs to enter exact values or click a preset swatch.
 
-### Option 2: build from source
+## Installation
 
-You will need the [Rust toolchain](https://www.rust-lang.org/tools/install) (stable channel) and Windows 10 or 11.
+### Option 1: Download Release Binary
+Download the latest `movingtext.exe` from the GitHub Releases page and run it directly. No installer or administrative permissions required.
+
+### Option 2: Build from Source
+Requires the [Rust toolchain](https://www.rust-lang.org/tools/install) (stable) on Windows 10 or Windows 11.
 
 ```bash
 git clone https://github.com/imnakul/movingtext.git
@@ -61,46 +107,36 @@ cd movingtext
 cargo build --release
 ```
 
-The compiled binary will be at `target/release/movingtext.exe`. Run it directly, no installation step needed.
+The compiled binary will be located at `target/release/movingtext.exe`.
 
-## Running it
+## Configuration Storage
 
-Launching `movingtext.exe` opens the settings window and starts the marquee overlay in the background. Closing the settings window (or pressing "Hide to Tray") does not quit the app: it minimizes to the system tray, and the marquee keeps running. Double-click the tray icon, or right-click it and choose "Open Settings", to bring the settings window back. Right-click the tray icon and choose "Exit Application" to actually quit.
-
-Everything is configured from the settings window:
-
-- **Text**: the message itself, a few quick presets, and the spacing between repeated copies of the phrase.
-- **Layout**: which edges are active, strip thickness, and clearance padding.
-- **Appearance**: font family, size, weight, style, and the text and background colors.
-- **Behavior**: scroll speed, direction, always-on-top, and click-through mode.
-
-A live preview strip at the bottom of the window always reflects the current settings.
-
-## Configuration file
-
-Settings are stored as plain JSON at:
+All preferences and states are saved automatically to a local JSON file at:
 
 ```
 %APPDATA%\movingtext\config.json
 ```
 
-Deleting that file resets MovingText to its defaults on next launch.
+To reset the application to factory defaults, simply delete this file while the application is closed.
 
-## Platform support
+## Architecture and Technology Stack
 
-MovingText is Windows-only by design. The overlay rendering is built directly on Direct2D and DirectWrite, and the tray integration and window management use the native Win32 API, so there is no cross-platform abstraction layer to maintain or to leak performance through. There are no plans to port it to macOS or Linux.
-
-## Built with
-
-- [Rust](https://www.rust-lang.org/)
-- [egui](https://github.com/emilk/egui) and [eframe](https://github.com/emilk/egui) for the settings window
-- Direct2D and DirectWrite (via the [`windows`](https://github.com/microsoft/windows-rs) crate) for the overlay rendering
-- [Plus Jakarta Sans](https://fonts.google.com/specimen/Plus+Jakarta+Sans) and [Noto Sans Devanagari](https://fonts.google.com/noto/specimen/Noto+Sans+Devanagari), both licensed under the SIL Open Font License, for interface and marquee text rendering
+- **Language**: Rust (2021 Edition)
+- **GUI Framework**: egui and eframe for the settings interface
+- **Graphics Pipeline**: Direct2D and DirectWrite via Microsoft Windows-rs bindings
+- **Backdrop Compositor**: GDI screen capture with DWM capture exclusion and bilinear Direct2D interpolation
+- **Media Integration**: Windows System Media Transport Controls (SMTC / WinRT)
+- **Typography**: Plus Jakarta Sans and Noto Sans Devanagari (SIL Open Font License)
 
 ## Contributing
 
-Issues and pull requests are welcome. If you are proposing a larger change, please open an issue first to discuss the approach. Run `cargo fmt` and `cargo build` before submitting a pull request; CI runs both on every push.
+Contributions and bug reports are welcome. Before submitting pull requests, ensure your changes compile with zero warnings:
+
+```bash
+cargo fmt --check
+cargo check
+```
 
 ## License
 
-MovingText is released under the [MIT License](LICENSE). Use it, fork it, ship it.
+MovingText is licensed under the [MIT License](LICENSE).

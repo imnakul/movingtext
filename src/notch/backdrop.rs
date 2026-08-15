@@ -31,10 +31,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
 };
 
-/// How far the capture is shrunk before being scaled back up. Larger is
-/// blurrier and cheaper; past about 10 the blur starts losing the shape of
-/// what is behind it, which reads as fog rather than glass.
-const DOWNSCALE: i32 = 8;
+/// Default downscale factor for blur sampling. Larger is blurrier and cheaper.
+const DEFAULT_DOWNSCALE: i32 = 8;
 
 /// Keep the captured strip out of these ranges and the arithmetic stays sane
 /// even if a caller asks for something absurd.
@@ -53,10 +51,11 @@ pub struct Backdrop {
 impl Backdrop {
     /// Buffer pixels needed for a region of this size. Kept in one place so
     /// the capacity check and the per-frame footprint can never disagree.
-    fn extent(width: i32, height: i32) -> (i32, i32) {
+    fn extent(width: i32, height: i32, downscale: i32) -> (i32, i32) {
+        let ds = if downscale <= 0 { DEFAULT_DOWNSCALE } else { downscale.clamp(2, 32) };
         (
-            (width / DOWNSCALE).clamp(MIN_DIM, MAX_DIM),
-            (height / DOWNSCALE).clamp(MIN_DIM, MAX_DIM),
+            (width / ds).clamp(MIN_DIM, MAX_DIM),
+            (height / ds).clamp(MIN_DIM, MAX_DIM),
         )
     }
 
@@ -65,8 +64,8 @@ impl Backdrop {
     /// top-left corner rather than forcing a reallocation, which matters
     /// because the notch changes size on every frame of the open animation.
     /// Returns `None` if GDI refuses, which is not worth retrying.
-    fn new(width: i32, height: i32) -> Option<Self> {
-        let (w, h) = Self::extent(width, height);
+    fn new(width: i32, height: i32, downscale: i32) -> Option<Self> {
+        let (w, h) = Self::extent(width, height, downscale);
 
         unsafe {
             let dc = CreateCompatibleDC(None);
@@ -209,19 +208,21 @@ impl BackdropCache {
         y: i32,
         width: i32,
         height: i32,
+        downscale: i32,
     ) -> Option<(ID2D1Bitmap, f32, f32)> {
         if self.broken || width <= 0 || height <= 0 {
             return None;
         }
 
-        let (uw, uh) = Backdrop::extent(width, height);
+        let ds = if downscale <= 0 { DEFAULT_DOWNSCALE } else { downscale.clamp(2, 32) };
+        let (uw, uh) = Backdrop::extent(width, height, ds);
 
         if self.inner.is_none() || uw > self.capacity.0 || uh > self.capacity.1 {
             // Grow to the union so a notch that gets wider and then taller
             // does not thrash between two shapes.
             let want_w = uw.max(self.capacity.0);
             let want_h = uh.max(self.capacity.1);
-            self.inner = Backdrop::new(want_w * DOWNSCALE, want_h * DOWNSCALE);
+            self.inner = Backdrop::new(want_w * ds, want_h * ds, ds);
 
             match self.inner.as_ref() {
                 Some(b) => self.capacity = (b.w, b.h),

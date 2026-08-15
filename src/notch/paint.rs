@@ -10,11 +10,12 @@ use windows::core::{Interface, PCWSTR};
 use windows::Foundation::Numerics::Matrix3x2;
 use windows::Win32::Foundation::GENERIC_READ;
 use windows::Win32::Graphics::Direct2D::Common::{
-    D2D1_COLOR_F, D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, D2D_POINT_2F, D2D_RECT_F,
+    D2D1_COLOR_F, D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_BEGIN_HOLLOW, D2D1_FIGURE_END_CLOSED,
+    D2D1_FIGURE_END_OPEN, D2D_POINT_2F, D2D_RECT_F,
 };
 use windows::Win32::Graphics::Direct2D::{
-    ID2D1Bitmap, ID2D1BitmapBrush, ID2D1DCRenderTarget, ID2D1SolidColorBrush,
-    D2D1_ANTIALIAS_MODE_ALIASED, D2D1_BITMAP_BRUSH_PROPERTIES,
+    ID2D1Bitmap, ID2D1BitmapBrush, ID2D1DCRenderTarget, ID2D1Factory, ID2D1PathGeometry,
+    ID2D1SolidColorBrush, D2D1_ANTIALIAS_MODE_ALIASED, D2D1_BITMAP_BRUSH_PROPERTIES,
     D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
     D2D1_ELLIPSE, D2D1_EXTEND_MODE_CLAMP, D2D1_ROUNDED_RECT,
 };
@@ -195,6 +196,53 @@ impl Painter {
                 radiusY: radius,
             };
             unsafe { t.FillRoundedRectangle(&rr, &b) };
+        }
+    }
+
+    fn stroke_rrect(
+        &self,
+        t: &ID2D1DCRenderTarget,
+        rect: D2D_RECT_F,
+        radius: f32,
+        width: f32,
+        color: Rgba,
+    ) {
+        if color[3] <= 0.002 {
+            return;
+        }
+        if let Ok(b) = self.brush(t, color) {
+            let rr = D2D1_ROUNDED_RECT {
+                rect,
+                radiusX: radius,
+                radiusY: radius,
+            };
+            unsafe { t.DrawRoundedRectangle(&rr, &b, width, None) };
+        }
+    }
+
+    fn line(
+        &self,
+        t: &ID2D1DCRenderTarget,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        width: f32,
+        color: Rgba,
+    ) {
+        if color[3] <= 0.002 {
+            return;
+        }
+        if let Ok(b) = self.brush(t, color) {
+            unsafe {
+                t.DrawLine(
+                    D2D_POINT_2F { x: x1, y: y1 },
+                    D2D_POINT_2F { x: x2, y: y2 },
+                    &b,
+                    width,
+                    None,
+                );
+            }
         }
     }
 
@@ -441,6 +489,9 @@ impl Painter {
             }
         }
 
+        // 3-Sided Glowing Border Alert Drain Timer / Glow Animation (painted unclipped for bloom)
+        self.paint_notification_glow(&t, &factory, cfg, state, &shape);
+
         // Content lives inside the slab with a small safety inset so nothing
         // can graze the antialiased edge.
         let content = D2D_RECT_F {
@@ -482,6 +533,7 @@ impl Painter {
         }
 
         if expanded_alpha > 0.004 {
+            self.paint_settings_button(&t, cfg, state, shape, expanded_alpha);
             self.paint_pin_button(&t, cfg, state, shape, expanded_alpha);
         }
 
@@ -493,10 +545,185 @@ impl Painter {
         Ok(())
     }
 
-    /// Toggle that freezes the panel open, ignoring the mouse-leave collapse.
-    /// A ring becomes a filled dot once pinned — the same on/off vocabulary
-    /// the pagination dots already use, so it reads as part of the same
-    /// instrument panel rather than a bolted-on control.
+    /// 3-Sided glowing border around notch with time-based countdown unwrap/drain and glow modes.
+    fn paint_notification_glow(
+        &self,
+        t: &ID2D1DCRenderTarget,
+        factory: &ID2D1Factory,
+        cfg: &AppConfig,
+        state: &NotchState,
+        shape: &NotchShape,
+    ) {
+        let notif_store = crate::notch::notify::global_store();
+        let store = notif_store.read();
+        let Some(toast) = &store.active_toast else {
+            return;
+        };
+
+        let glow_alpha = state.toast_progress.value.clamp(0.0, 1.0);
+        if glow_alpha <= 0.01 {
+            return;
+        }
+
+        let app_color = cfg
+            .notch
+            .notifications
+            .get_app_color(&toast.notification.app);
+
+        let drain = (toast.remaining / toast.duration).clamp(0.0, 1.0);
+
+        match cfg.notch.notifications.glow_style {
+            crate::config::NotificationGlowStyle::CountdownDrain => {
+                if drain > 0.005 {
+                    if let Ok((geom, (hx, hy))) = build_3sided_border_geometry(factory, shape, drain) {
+                        // Multi-pass neon bloom along smooth continuous path
+                        if let Ok(b_diffuse) = self.brush(t, theme::fade(app_color, glow_alpha * 0.22)) {
+                            unsafe { t.DrawGeometry(&geom, &b_diffuse, 8.0, None) };
+                        }
+                        if let Ok(b_halo) = self.brush(t, theme::fade(app_color, glow_alpha * 0.58)) {
+                            unsafe { t.DrawGeometry(&geom, &b_halo, 4.0, None) };
+                        }
+                        if let Ok(b_core) = self.brush(t, theme::fade(app_color, glow_alpha * 0.98)) {
+                            unsafe { t.DrawGeometry(&geom, &b_core, 2.0, None) };
+                        }
+
+                        // Glowing spark point on active draining head
+                        self.dot(t, hx, hy, 4.0, theme::fade(app_color, glow_alpha * 0.9));
+                        self.dot(t, hx, hy, 2.0, theme::fade([1.0, 1.0, 1.0, 1.0], glow_alpha));
+                    }
+                }
+            }
+
+            crate::config::NotificationGlowStyle::RgbBorderMoving => {
+                let path_points = sample_notch_perimeter(shape, 88);
+                let len = path_points.len();
+                if len >= 2 {
+                    for i in 0..len - 1 {
+                        let (x1, y1) = path_points[i];
+                        let (x2, y2) = path_points[i + 1];
+                        let u = i as f32 / len as f32;
+                        let hue = (u * 1.6 - state.elapsed * 1.4).rem_euclid(1.0);
+                        let seg_color = hsl_to_rgb(hue, 0.95, 0.58);
+
+                        self.line(
+                            t,
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            7.0,
+                            theme::fade(seg_color, glow_alpha * 0.25),
+                        );
+                        self.line(
+                            t,
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            3.6,
+                            theme::fade(seg_color, glow_alpha * 0.6),
+                        );
+                        self.line(
+                            t,
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            1.8,
+                            theme::fade(seg_color, glow_alpha * 0.98),
+                        );
+                    }
+                }
+            }
+
+            crate::config::NotificationGlowStyle::WavyRgbMoving => {
+                let path_points = sample_notch_perimeter(shape, 88);
+                let len = path_points.len();
+                if len >= 2 {
+                    for i in 0..len - 1 {
+                        let (x1, y1) = path_points[i];
+                        let (x2, y2) = path_points[i + 1];
+                        let u = i as f32 / len as f32;
+                        let wave = (u * 14.0 - state.elapsed * 5.5).sin() * 0.5 + 0.5;
+                        let hue = (u + state.elapsed * 0.75).rem_euclid(1.0);
+                        let seg_color = hsl_to_rgb(hue, 0.95, 0.55);
+                        let stroke_w = 1.4 + wave * 2.8;
+
+                        self.line(
+                            t,
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            stroke_w * 2.2,
+                            theme::fade(seg_color, glow_alpha * 0.28),
+                        );
+                        self.line(
+                            t,
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            stroke_w,
+                            theme::fade(seg_color, glow_alpha * 0.95),
+                        );
+                    }
+                }
+            }
+
+            crate::config::NotificationGlowStyle::NeonGlow => {
+                let pulse = 0.82 + 0.18 * (state.elapsed * 3.5).sin();
+                if let Ok((geom, _)) = build_3sided_border_geometry(factory, shape, 1.0) {
+                    if let Ok(b_diffuse) = self.brush(t, theme::fade(app_color, glow_alpha * 0.20 * pulse)) {
+                        unsafe { t.DrawGeometry(&geom, &b_diffuse, 10.0, None) };
+                    }
+                    if let Ok(b_halo) = self.brush(t, theme::fade(app_color, glow_alpha * 0.55 * pulse)) {
+                        unsafe { t.DrawGeometry(&geom, &b_halo, 5.0, None) };
+                    }
+                    if let Ok(b_core) = self.brush(t, theme::fade(app_color, glow_alpha * 0.98)) {
+                        unsafe { t.DrawGeometry(&geom, &b_core, 2.0, None) };
+                    }
+                }
+            }
+        }
+    }
+
+    /// Settings launcher button: opens the Settings panel on click (Hugeicons stroke gear).
+    fn paint_settings_button(
+        &self,
+        t: &ID2D1DCRenderTarget,
+        _cfg: &AppConfig,
+        _state: &NotchState,
+        shape: NotchShape,
+        alpha: f32,
+    ) {
+        let (cx, cy, r) = shape.settings_button();
+
+        // Soft well
+        self.dot(t, cx, cy, r + 6.0, theme::fade(self.pal.well, alpha));
+
+        let gear_color = theme::fade(self.pal.text_lo, alpha * 0.95);
+        let hub_r = r * 0.36;
+        let outer_r = r * 0.74;
+
+        // Gear body rings
+        self.ring(t, cx, cy, outer_r, 1.2, gear_color);
+        self.ring(t, cx, cy, hub_r, 1.0, gear_color);
+
+        // 6 gear cogs / teeth
+        for i in 0..6 {
+            let angle = (i as f32) * (std::f32::consts::PI / 3.0);
+            let cos_a = angle.cos();
+            let sin_a = angle.sin();
+            let x1 = cx + cos_a * (outer_r - 0.6);
+            let y1 = cy + sin_a * (outer_r - 0.6);
+            let x2 = cx + cos_a * (outer_r + 2.4);
+            let y2 = cy + sin_a * (outer_r + 2.4);
+            self.line(t, x1, y1, x2, y2, 1.6, gear_color);
+        }
+    }
+
+    /// Pin toggle button: locks the panel open, drawn with authentic Hugeicons pushpin stroke geometry.
     fn paint_pin_button(
         &self,
         t: &ID2D1DCRenderTarget,
@@ -508,19 +735,61 @@ impl Painter {
         let (cx, cy, r) = shape.pin_button();
         let pinned = state.pinned;
 
-        // A soft well behind it so the ring stays legible over any slide,
-        // photos included.
+        // Soft well behind it
         self.dot(t, cx, cy, r + 6.0, theme::fade(self.pal.well, alpha));
 
-        let ring_color = if pinned {
+        let color = if pinned {
             theme::fade(cfg.notch.accent, alpha)
         } else {
             theme::fade(self.pal.text_lo, alpha * 0.9)
         };
-        self.ring(t, cx, cy, r, 1.4, ring_color);
+
+        // Hugeicons angled pushpin stroke geometry:
+        let tip_x = cx - 4.4;
+        let tip_y = cy + 4.4;
+        let base_x = cx - 1.0;
+        let base_y = cy + 1.0;
+        let head_x = cx + 3.8;
+        let head_y = cy - 3.8;
+
+        // Needle line
+        self.line(t, tip_x, tip_y, base_x, base_y, 1.3, color);
+
+        // Collar crossbar
+        self.line(
+            t,
+            base_x - 2.4,
+            base_y - 2.4,
+            base_x + 2.4,
+            base_y + 2.4,
+            1.5,
+            color,
+        );
+
+        // Barrel
+        self.line(
+            t,
+            base_x,
+            base_y,
+            head_x,
+            head_y,
+            if pinned { 2.6 } else { 1.6 },
+            color,
+        );
+
+        // Pin cap head
+        self.line(
+            t,
+            head_x - 3.2,
+            head_y - 3.2,
+            head_x + 3.2,
+            head_y + 3.2,
+            2.0,
+            color,
+        );
 
         if pinned {
-            self.dot(t, cx, cy, r * 0.42, theme::fade(cfg.notch.accent, alpha));
+            self.dot(t, tip_x, tip_y, 1.6, theme::fade(cfg.notch.accent, alpha));
         }
     }
 
@@ -616,7 +885,10 @@ impl Painter {
         let w = shape.width().ceil() as i32;
         let h = shape.height().ceil() as i32;
 
-        let Some((bitmap, sx, sy)) = self.backdrop.sample(t, x, y, w, h) else {
+        let Some((bitmap, sx, sy)) =
+            self.backdrop
+                .sample(t, x, y, w, h, self.pal.blur_downscale)
+        else {
             return;
         };
 
@@ -693,6 +965,74 @@ impl Painter {
         let cx = (shape.left + shape.right) * 0.5;
         let cy = (shape.top + shape.bottom) * 0.5;
         let inner_w = (shape.width() - pad * 2.0).max(10.0);
+
+        let notif_store = crate::notch::notify::global_store();
+        let store_read = notif_store.read();
+
+        if let Some(toast) = &store_read.active_toast {
+            let app_name = &toast.notification.app;
+            let title = &toast.notification.title;
+            let body = &toast.notification.body;
+
+            let app_color = cfg
+                .notch
+                .notifications
+                .get_app_color(&toast.notification.app);
+
+            // App badge pill on left
+            let pill_w = 78.0;
+            let pill_h = 20.0;
+            let pill_rect = D2D_RECT_F {
+                left: shape.left + 12.0,
+                top: cy - pill_h * 0.5,
+                right: shape.left + 12.0 + pill_w,
+                bottom: cy + pill_h * 0.5,
+            };
+            self.fill_rrect(t, pill_rect, 4.0, theme::fade(app_color, alpha * 0.22));
+            self.stroke_rrect(t, pill_rect, 4.0, 1.0, theme::fade(app_color, alpha * 0.6));
+
+            self.label(
+                t,
+                family,
+                &app_name.to_uppercase(),
+                theme::SIZE_LABEL - 2.0,
+                DWRITE_FONT_WEIGHT_BOLD,
+                0.5,
+                pill_w - 4.0,
+                pill_rect.left + 6.0,
+                pill_rect.top + 2.0,
+                theme::fade(app_color, alpha),
+            );
+
+            // Title + Body text preview
+            let text_x = pill_rect.right + 10.0;
+            let avail = (shape.right - text_x - 14.0).max(20.0);
+            let display_text = if body.trim().is_empty() {
+                title.clone()
+            } else {
+                format!("{} \u{2014} {}", title, body)
+            };
+
+            let Ok(fmt) = self
+                .text
+                .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
+            else {
+                return;
+            };
+            self.text.set_ellipsis(&fmt);
+            let Ok(layout) = self.text.layout(&display_text, &fmt, avail, shape.height()) else {
+                return;
+            };
+            let (_, th) = TextEngine::measure(&layout);
+            self.draw_layout(
+                t,
+                &layout,
+                text_x,
+                cy - th * 0.5,
+                theme::fade(self.pal.text_hi, alpha),
+            );
+            return;
+        }
 
         match slide {
             SlideKind::Clock => {
@@ -927,6 +1267,85 @@ impl Painter {
                     theme::fade(self.pal.text_hi, alpha),
                 );
             }
+
+            SlideKind::Notifications => {
+                let notif_store = crate::notch::notify::global_store();
+                let store = notif_store.read();
+                let unread = store.unread_count();
+                let dot_r = 3.5;
+                let dot_x = shape.left + pad + dot_r;
+                let has_unread = unread > 0;
+                self.dot(
+                    t,
+                    dot_x,
+                    cy,
+                    dot_r,
+                    theme::fade(
+                        if has_unread { [0.22, 0.74, 0.97, 1.0] } else { self.pal.text_lo },
+                        alpha * if has_unread { state.pulse() } else { 0.7 },
+                    ),
+                );
+
+                let text_x = dot_x + dot_r + 9.0;
+                let avail = (shape.right - pad - text_x).max(10.0);
+                let text = if let Some(latest) = store.items.first() {
+                    format!("{}: {}", latest.app, latest.title)
+                } else {
+                    "No notifications".to_string()
+                };
+
+                let Ok(fmt) = self
+                    .text
+                    .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
+                else {
+                    return;
+                };
+                self.text.set_ellipsis(&fmt);
+                let Ok(layout) = self.text.layout(&text, &fmt, avail, shape.height()) else {
+                    return;
+                };
+                let (_, th) = TextEngine::measure(&layout);
+                self.draw_layout(
+                    t,
+                    &layout,
+                    text_x,
+                    cy - th * 0.5,
+                    theme::fade(self.pal.text_hi, alpha),
+                );
+            }
+
+            SlideKind::Usage => {
+                let snapshot = crate::notch::notify::usage_store().read().clone();
+                let dot_r = 3.0;
+                let dot_x = shape.left + pad + dot_r;
+                self.dot(t, dot_x, cy, dot_r, theme::fade(cfg.notch.accent, alpha * 0.8));
+
+                let text_x = dot_x + dot_r + 9.0;
+                let avail = (shape.right - pad - text_x).max(10.0);
+                let text = match snapshot.context_used_pct {
+                    Some(pct) => format!("Context {:.0}%", pct),
+                    None => "Claude usage".to_string(),
+                };
+
+                let Ok(fmt) = self
+                    .text
+                    .format(family, theme::SIZE_PILL, DWRITE_FONT_WEIGHT_SEMI_BOLD)
+                else {
+                    return;
+                };
+                self.text.set_ellipsis(&fmt);
+                let Ok(layout) = self.text.layout(&text, &fmt, avail, shape.height()) else {
+                    return;
+                };
+                let (_, th) = TextEngine::measure(&layout);
+                self.draw_layout(
+                    t,
+                    &layout,
+                    text_x,
+                    cy - th * 0.5,
+                    theme::fade(self.pal.text_hi, alpha),
+                );
+            }
         }
     }
 
@@ -1006,6 +1425,464 @@ impl Painter {
                 self.paint_wallpaper(t, factory, cfg, panel, body, alpha, generation)
             }
             SlideKind::Media => self.paint_media(t, factory, cfg, body, alpha, generation),
+            SlideKind::Notifications => self.paint_notifications(t, cfg, state, body, alpha),
+            SlideKind::Usage => self.paint_usage(t, cfg, body, alpha),
+        }
+    }
+
+    fn paint_usage(&mut self, t: &ID2D1DCRenderTarget, cfg: &AppConfig, body: D2D_RECT_F, alpha: f32) {
+        let family = &cfg.notch.font_family;
+        let snapshot = crate::notch::notify::usage_store().read().clone();
+
+        self.label(
+            t,
+            family,
+            "CLAUDE CODE USAGE",
+            theme::SIZE_LABEL,
+            DWRITE_FONT_WEIGHT_EXTRA_BOLD,
+            theme::TRACK_LABEL,
+            body.right - body.left,
+            body.left,
+            body.top,
+            theme::fade(self.pal.text_lo, alpha * 0.9),
+        );
+
+        if snapshot.updated_at_secs == 0 {
+            self.label(
+                t,
+                family,
+                "Waiting for the Claude Code status line…",
+                theme::SIZE_BODY,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                0.0,
+                body.right - body.left,
+                body.left,
+                body.top + 28.0,
+                theme::fade(self.pal.text_hi, alpha * 0.85),
+            );
+            return;
+        }
+
+        // Cost, top right
+        if let Some(cost) = snapshot.cost_usd {
+            self.label(
+                t,
+                family,
+                &format!("${:.2} session", cost),
+                theme::SIZE_LEAD - 2.0,
+                DWRITE_FONT_WEIGHT_BOLD,
+                0.0,
+                body.right - body.left,
+                body.left,
+                body.top + 2.0,
+                theme::fade(cfg.notch.accent, alpha),
+            );
+        }
+
+        let rows: [(&str, Option<f32>, Option<&str>); 3] = [
+            ("CONTEXT WINDOW", snapshot.context_used_pct, None),
+            ("5-HOUR LIMIT", snapshot.rate_5h_pct, snapshot.rate_5h_resets_at.as_deref()),
+            ("7-DAY LIMIT", snapshot.rate_7d_pct, snapshot.rate_7d_resets_at.as_deref()),
+        ];
+
+        let row_h = 26.0;
+        let mut y = body.top + 34.0;
+        let bar_w = body.right - body.left;
+
+        for (label_text, pct, resets_at) in rows {
+            let Some(pct) = pct else {
+                y += row_h;
+                continue;
+            };
+
+            let mut caption = format!("{}  {:.0}%", label_text, pct);
+            if let Some(resets) = resets_at {
+                caption.push_str("  ·  resets ");
+                caption.push_str(resets);
+            }
+
+            self.label(
+                t,
+                family,
+                &caption,
+                theme::SIZE_LABEL - 1.0,
+                DWRITE_FONT_WEIGHT_BOLD,
+                theme::TRACK_LABEL * 0.5,
+                bar_w,
+                body.left,
+                y,
+                theme::fade(self.pal.text_lo, alpha * 0.9),
+            );
+
+            let bar_y = y + 15.0;
+            let track = D2D_RECT_F {
+                left: body.left,
+                top: bar_y,
+                right: body.left + bar_w,
+                bottom: bar_y + 4.0,
+            };
+            self.fill_rrect(t, track, 2.0, theme::fade(self.pal.well, alpha * 2.4));
+
+            let fill_color = if pct >= 90.0 {
+                [0.94, 0.27, 0.27, 1.0]
+            } else if pct >= 70.0 {
+                [1.00, 0.65, 0.00, 1.0]
+            } else {
+                cfg.notch.accent
+            };
+            let filled = D2D_RECT_F {
+                left: body.left,
+                top: bar_y,
+                right: body.left + bar_w * (pct / 100.0).clamp(0.0, 1.0),
+                bottom: bar_y + 4.0,
+            };
+            self.fill_rrect(t, filled, 2.0, theme::fade(fill_color, alpha));
+
+            y += row_h;
+        }
+    }
+
+    fn paint_notifications(
+        &mut self,
+        t: &ID2D1DCRenderTarget,
+        cfg: &AppConfig,
+        state: &NotchState,
+        body: D2D_RECT_F,
+        alpha: f32,
+    ) {
+        let family = &cfg.notch.font_family;
+        let notif_store = crate::notch::notify::global_store();
+        let store = notif_store.read();
+
+        // If an item is selected for detailed inspection, render its expanded card in place:
+        if let Some(sel_id) = state.selected_notification_id {
+            if let Some(item) = store.items.iter().find(|i| i.id == sel_id) {
+                // Header: Back Button + App Badge
+                let back_rect = crate::notch::geom::notification_back_button(body);
+                self.fill_rrect(t, back_rect, 4.0, theme::fade(self.pal.well, alpha * 0.9));
+                self.stroke_rrect(
+                    t,
+                    back_rect,
+                    4.0,
+                    1.0,
+                    theme::fade(self.pal.rule, alpha * 0.8),
+                );
+                self.label(
+                    t,
+                    family,
+                    "← Back",
+                    theme::SIZE_LABEL - 0.5,
+                    DWRITE_FONT_WEIGHT_BOLD,
+                    0.0,
+                    50.0,
+                    back_rect.left + 8.0,
+                    back_rect.top + 2.0,
+                    theme::fade(self.pal.text_hi, alpha),
+                );
+
+                let app_color = cfg.notch.notifications.get_app_color(&item.app);
+                let app_pill = D2D_RECT_F {
+                    left: back_rect.right + 10.0,
+                    top: body.top - 2.0,
+                    right: back_rect.right + 94.0,
+                    bottom: body.top + 18.0,
+                };
+                self.fill_rrect(t, app_pill, 4.0, theme::fade(app_color, alpha * 0.22));
+                self.stroke_rrect(t, app_pill, 4.0, 1.0, theme::fade(app_color, alpha * 0.6));
+                self.label(
+                    t,
+                    family,
+                    &item.app.to_uppercase(),
+                    theme::SIZE_LABEL - 2.0,
+                    DWRITE_FONT_WEIGHT_BOLD,
+                    0.5,
+                    78.0,
+                    app_pill.left + 6.0,
+                    app_pill.top + 1.0,
+                    theme::fade(app_color, alpha),
+                );
+
+                self.label(
+                    t,
+                    family,
+                    &item.time_str,
+                    theme::SIZE_LABEL - 1.0,
+                    DWRITE_FONT_WEIGHT_MEDIUM,
+                    0.0,
+                    80.0,
+                    app_pill.right + 12.0,
+                    body.top + 1.0,
+                    theme::fade(self.pal.text_lo, alpha * 0.8),
+                );
+
+                // Notification Title
+                self.label(
+                    t,
+                    family,
+                    &item.title,
+                    theme::SIZE_LEAD - 1.0,
+                    DWRITE_FONT_WEIGHT_BOLD,
+                    0.0,
+                    body.right - body.left,
+                    body.left,
+                    body.top + 28.0,
+                    theme::fade(self.pal.text_hi, alpha),
+                );
+
+                // Detailed Body Card inside rounded glass well
+                let content_rect = D2D_RECT_F {
+                    left: body.left,
+                    top: body.top + 54.0,
+                    right: body.right,
+                    bottom: body.bottom - 26.0,
+                };
+                self.fill_rrect(
+                    t,
+                    content_rect,
+                    8.0,
+                    theme::fade(self.pal.well, alpha * 0.75),
+                );
+                self.stroke_rrect(
+                    t,
+                    content_rect,
+                    8.0,
+                    1.0,
+                    theme::fade(self.pal.rule, alpha * 0.5),
+                );
+
+                let Ok(fmt) = self
+                    .text
+                    .format(family, theme::SIZE_BODY, DWRITE_FONT_WEIGHT_MEDIUM)
+                else {
+                    return;
+                };
+                let avail_w = (content_rect.right - content_rect.left - 24.0).max(20.0);
+                let avail_h = (content_rect.bottom - content_rect.top - 16.0).max(20.0);
+                if let Ok(layout) = self.text.layout(&item.body, &fmt, avail_w, avail_h) {
+                    self.draw_layout(
+                        t,
+                        &layout,
+                        content_rect.left + 12.0,
+                        content_rect.top + 10.0,
+                        theme::fade(self.pal.text_mid, alpha),
+                    );
+                }
+
+                // Dismiss Button at bottom
+                let dismiss_rect = crate::notch::geom::notification_dismiss_button(body);
+                self.fill_rrect(t, dismiss_rect, 5.0, theme::fade(app_color, alpha * 0.18));
+                self.stroke_rrect(
+                    t,
+                    dismiss_rect,
+                    5.0,
+                    1.0,
+                    theme::fade(app_color, alpha * 0.5),
+                );
+                self.label(
+                    t,
+                    family,
+                    "Dismiss",
+                    theme::SIZE_LABEL,
+                    DWRITE_FONT_WEIGHT_BOLD,
+                    0.0,
+                    60.0,
+                    dismiss_rect.left + 12.0,
+                    dismiss_rect.top + 3.0,
+                    theme::fade(app_color, alpha),
+                );
+                return;
+            }
+        }
+
+        // Header: "NOTIFICATIONS" and "Clear All"
+        self.dot(
+            t,
+            body.left + 3.0,
+            body.top + 6.0,
+            3.0,
+            theme::fade([0.22, 0.74, 0.97, 1.0], alpha * state.pulse()),
+        );
+
+        let unread = store.unread_count();
+        let heading = if unread > 0 {
+            format!("NOTIFICATIONS  ·  {} NEW", unread)
+        } else {
+            "NOTIFICATIONS".to_string()
+        };
+
+        self.label(
+            t,
+            family,
+            &heading,
+            theme::SIZE_LABEL,
+            DWRITE_FONT_WEIGHT_EXTRA_BOLD,
+            theme::TRACK_LABEL,
+            body.right - body.left - 100.0,
+            body.left + 14.0,
+            body.top + 1.0,
+            theme::fade([0.22, 0.74, 0.97, 1.0], alpha),
+        );
+
+        // "Clear all" button in header
+        if !store.items.is_empty() {
+            let clr_rect = crate::notch::geom::notification_clear_button(body);
+            self.label(
+                t,
+                family,
+                "Clear all",
+                theme::SIZE_LABEL - 0.5,
+                DWRITE_FONT_WEIGHT_BOLD,
+                0.2,
+                64.0,
+                clr_rect.left,
+                clr_rect.top + 2.0,
+                theme::fade(self.pal.text_lo, alpha * 0.9),
+            );
+        }
+
+        // Body area
+        let list_top = body.top + 26.0;
+        if store.items.is_empty() {
+            // Empty state
+            let center_y = (list_top + body.bottom) * 0.5;
+            let cx = (body.left + body.right) * 0.5;
+
+            // Soft empty badge
+            self.dot(t, cx, center_y - 14.0, 14.0, theme::fade(self.pal.well, alpha));
+            self.ring(t, cx, center_y - 14.0, 14.0, 1.2, theme::fade(self.pal.rule, alpha));
+            self.dot(t, cx, center_y - 14.0, 3.5, theme::fade([0.22, 0.74, 0.97, 1.0], alpha));
+
+            self.label(
+                t,
+                family,
+                "All caught up",
+                theme::SIZE_LEAD - 2.0,
+                DWRITE_FONT_WEIGHT_BOLD,
+                0.0,
+                body.right - body.left,
+                cx - 45.0,
+                center_y + 4.0,
+                theme::fade(self.pal.text_hi, alpha),
+            );
+            self.label(
+                t,
+                family,
+                "Notifications from Antigravity, Codex, Claude & allowed apps will appear here",
+                theme::SIZE_LABEL,
+                DWRITE_FONT_WEIGHT_MEDIUM,
+                0.0,
+                body.right - body.left - 40.0,
+                body.left + 20.0,
+                center_y + 24.0,
+                theme::fade(self.pal.text_lo, alpha * 0.8),
+            );
+        } else {
+            // Draw list of recent notifications (up to 3 items)
+            let item_h = 38.0;
+            let max_items = 3.min(store.items.len());
+
+            for (i, item) in store.items.iter().take(max_items).enumerate() {
+                let iy = list_top + (i as f32) * (item_h + 6.0);
+                let item_rect = D2D_RECT_F {
+                    left: body.left,
+                    top: iy,
+                    right: body.right,
+                    bottom: iy + item_h,
+                };
+
+                // Card background well
+                self.fill_rrect(
+                    t,
+                    item_rect,
+                    8.0,
+                    theme::fade(self.pal.well, alpha * 0.75),
+                );
+                self.stroke_rrect(
+                    t,
+                    item_rect,
+                    8.0,
+                    1.0,
+                    theme::fade(self.pal.rule, alpha * 0.6),
+                );
+
+                // App pill badge
+                let app_color = cfg.notch.notifications.get_app_color(&item.app);
+
+                let pill_rect = D2D_RECT_F {
+                    left: item_rect.left + 8.0,
+                    top: item_rect.top + 7.0,
+                    right: item_rect.left + 82.0,
+                    bottom: item_rect.top + 21.0,
+                };
+                self.fill_rrect(t, pill_rect, 4.0, theme::fade(app_color, alpha * 0.18));
+                self.stroke_rrect(t, pill_rect, 4.0, 1.0, theme::fade(app_color, alpha * 0.5));
+
+                self.label(
+                    t,
+                    family,
+                    &item.app.to_uppercase(),
+                    theme::SIZE_LABEL - 2.0,
+                    DWRITE_FONT_WEIGHT_BOLD,
+                    0.5,
+                    70.0,
+                    pill_rect.left + 6.0,
+                    pill_rect.top + 1.0,
+                    theme::fade(app_color, alpha),
+                );
+
+                // Time string
+                self.label(
+                    t,
+                    family,
+                    &item.time_str,
+                    theme::SIZE_LABEL - 2.0,
+                    DWRITE_FONT_WEIGHT_MEDIUM,
+                    0.0,
+                    70.0,
+                    item_rect.right - 64.0,
+                    item_rect.top + 8.0,
+                    theme::fade(self.pal.text_lo, alpha * 0.7),
+                );
+
+                // Notification Title
+                self.label(
+                    t,
+                    family,
+                    &item.title,
+                    theme::SIZE_PILL - 1.0,
+                    DWRITE_FONT_WEIGHT_BOLD,
+                    0.0,
+                    item_rect.right - item_rect.left - 165.0,
+                    item_rect.left + 90.0,
+                    item_rect.top + 6.0,
+                    theme::fade(self.pal.text_hi, alpha),
+                );
+
+                // Notification Body text
+                self.label(
+                    t,
+                    family,
+                    &item.body,
+                    theme::SIZE_LABEL - 0.5,
+                    DWRITE_FONT_WEIGHT_MEDIUM,
+                    0.0,
+                    item_rect.right - item_rect.left - 100.0,
+                    item_rect.left + 90.0,
+                    item_rect.top + 20.0,
+                    theme::fade(self.pal.text_mid, alpha * 0.9),
+                );
+
+                if !item.read {
+                    // Glowing unread cyan dot
+                    self.dot(
+                        t,
+                        item_rect.left + 4.0,
+                        item_rect.top + 4.0,
+                        2.5,
+                        theme::fade([0.22, 0.74, 0.97, 1.0], alpha),
+                    );
+                }
+            }
         }
     }
 
@@ -2099,4 +2976,271 @@ fn scale_matrix(s: f32) -> Matrix3x2 {
         M31: 0.0,
         M32: 0.0,
     }
+}
+
+/// Convert HSL color model to RGBA float array.
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> Rgba {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - (((h * 6.0) % 2.0) - 1.0).abs());
+    let m = l - c * 0.5;
+    let (r1, g1, b1) = match ((h * 6.0) as u32) % 6 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    [r1 + m, g1 + m, b1 + m, 1.0]
+}
+
+/// Builds a smooth continuous Direct2D PathGeometry tracing the 3-sided outer border
+/// (left down, bottom-left curve, bottom across, bottom-right curve, right up)
+/// for any drain progress in [0.0, 1.0], returning the geometry and the leading tip coordinate.
+/// A quarter-circle corner arc, oriented so `point_at(0.0)` sits nearer the
+/// top of the shape and `point_at(1.0)` sits where the straight edge begins
+/// — the direction the 3-sided border is traced in, whether the corner is a
+/// concave bezel shoulder or a convex rounded corner.
+#[derive(Clone, Copy)]
+struct ArcCorner {
+    center: (f32, f32),
+    radius: f32,
+    theta_start: f32,
+    theta_end: f32,
+}
+
+impl ArcCorner {
+    fn point_at(&self, frac: f32) -> (f32, f32) {
+        let theta = self.theta_start - frac.clamp(0.0, 1.0) * (self.theta_start - self.theta_end);
+        (
+            self.center.0 + self.radius * theta.cos(),
+            self.center.1 + self.radius * theta.sin(),
+        )
+    }
+
+    fn start(&self) -> (f32, f32) {
+        self.point_at(0.0)
+    }
+
+    fn end(&self) -> (f32, f32) {
+        self.point_at(1.0)
+    }
+}
+
+/// The four corner arcs of the 3-sided border (top-left, bottom-left,
+/// bottom-right, top-right), matching `NotchShape::build`'s own corner
+/// geometry exactly — concave shoulder while fused to the bezel, rounded
+/// corner while detached, or `None` for a hard corner — so the glow border
+/// always hugs the real silhouette instead of cutting across the shoulder.
+fn notch_corners(
+    shape: &NotchShape,
+) -> (
+    Option<ArcCorner>,
+    Option<ArcCorner>,
+    Option<ArcCorner>,
+    Option<ArcCorner>,
+) {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let (l, t, r, b) = (shape.left, shape.top, shape.right, shape.bottom);
+    let limit = (shape.width().min(shape.height()) * 0.5).max(0.0);
+    let rt = shape.radius_top.clamp(0.0, limit);
+    let rb = shape.radius_bottom.clamp(0.0, limit);
+    let flare = shape.flare.clamp(0.0, (shape.height() * 0.5).max(0.0));
+
+    let top_left = if flare > 0.5 {
+        Some(ArcCorner {
+            center: (l, t),
+            radius: flare,
+            theta_start: PI,
+            theta_end: FRAC_PI_2,
+        })
+    } else if rt > 0.5 {
+        Some(ArcCorner {
+            center: (l + rt, t + rt),
+            radius: rt,
+            theta_start: PI + FRAC_PI_2,
+            theta_end: PI,
+        })
+    } else {
+        None
+    };
+
+    let top_right = if flare > 0.5 {
+        Some(ArcCorner {
+            center: (r, t),
+            radius: flare,
+            theta_start: FRAC_PI_2,
+            theta_end: 0.0,
+        })
+    } else if rt > 0.5 {
+        Some(ArcCorner {
+            center: (r - rt, t + rt),
+            radius: rt,
+            theta_start: 2.0 * PI,
+            theta_end: PI + FRAC_PI_2,
+        })
+    } else {
+        None
+    };
+
+    let bottom_left = if rb > 0.5 {
+        Some(ArcCorner {
+            center: (l + rb, b - rb),
+            radius: rb,
+            theta_start: PI,
+            theta_end: FRAC_PI_2,
+        })
+    } else {
+        None
+    };
+
+    let bottom_right = if rb > 0.5 {
+        Some(ArcCorner {
+            center: (r - rb, b - rb),
+            radius: rb,
+            theta_start: FRAC_PI_2,
+            theta_end: 0.0,
+        })
+    } else {
+        None
+    };
+
+    (top_left, bottom_left, bottom_right, top_right)
+}
+
+/// Builds a Direct2D path tracing the 3-sided outer border (left, bottom,
+/// right — the top is fused to the bezel or is the panel's own top edge, so
+/// it never gets a glow) for any drain progress in `[0.0, 1.0]`, returning
+/// the geometry and the leading tip coordinate. Walks the same perimeter
+/// samples `sample_notch_perimeter` produces as a polyline, so the two stay
+/// in sync and neither needs to reason about Direct2D arc sweep directions.
+fn build_3sided_border_geometry(
+    factory: &ID2D1Factory,
+    shape: &NotchShape,
+    drain_fraction: f32,
+) -> windows::core::Result<(ID2D1PathGeometry, (f32, f32))> {
+    let points = sample_notch_perimeter(shape, 0);
+
+    let geometry = unsafe { factory.CreatePathGeometry()? };
+    let sink = unsafe { geometry.Open()? };
+
+    let first = *points.first().unwrap_or(&(shape.left, shape.top));
+    unsafe { sink.BeginFigure(D2D_POINT_2F { x: first.0, y: first.1 }, D2D1_FIGURE_BEGIN_HOLLOW) };
+
+    let seg_lens: Vec<f32> = points
+        .windows(2)
+        .map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt())
+        .collect();
+    let total_len: f32 = seg_lens.iter().sum();
+    let target_len = (total_len * drain_fraction.clamp(0.0, 1.0)).max(0.1);
+
+    let mut consumed = 0.0f32;
+    let mut current_pt = first;
+
+    for (i, &seg_len) in seg_lens.iter().enumerate() {
+        if seg_len <= 0.0001 {
+            continue;
+        }
+        let remaining = target_len - consumed;
+        if remaining <= 0.0 {
+            break;
+        }
+
+        let (p0, p1) = (points[i], points[i + 1]);
+        if remaining >= seg_len {
+            unsafe { sink.AddLine(D2D_POINT_2F { x: p1.0, y: p1.1 }) };
+            current_pt = p1;
+            consumed += seg_len;
+        } else {
+            let f = remaining / seg_len;
+            let pt = (p0.0 + (p1.0 - p0.0) * f, p0.1 + (p1.1 - p0.1) * f);
+            unsafe { sink.AddLine(D2D_POINT_2F { x: pt.0, y: pt.1 }) };
+            current_pt = pt;
+            break;
+        }
+    }
+
+    unsafe {
+        sink.EndFigure(D2D1_FIGURE_END_OPEN);
+        sink.Close()?;
+    }
+
+    Ok((geometry, current_pt))
+}
+
+/// Sample points along the 3-sided outer border (left, bottom, right) of the
+/// notch, from the tip where the left edge meets the top — whether that's a
+/// concave bezel shoulder, a rounded corner, or a hard corner — all the way
+/// around to the matching tip on the right. Mirrors `NotchShape::build`'s
+/// corner geometry so the glow always hugs the real silhouette.
+fn sample_notch_perimeter(shape: &NotchShape, _step_count: usize) -> Vec<(f32, f32)> {
+    let (top_left, bottom_left, bottom_right, top_right) = notch_corners(shape);
+    let (l, t, r, b) = (shape.left, shape.top, shape.right, shape.bottom);
+
+    let corner_steps = 14;
+    let straight_steps = 18;
+    let bottom_steps = 36;
+
+    let sample_arc = |path: &mut Vec<(f32, f32)>, c: &ArcCorner| {
+        for i in 0..=corner_steps {
+            let f = i as f32 / corner_steps as f32;
+            path.push(c.point_at(f));
+        }
+    };
+
+    let mut path: Vec<(f32, f32)> = Vec::with_capacity(160);
+
+    // 1. Top-left shoulder / rounded corner / hard corner.
+    match &top_left {
+        Some(c) => sample_arc(&mut path, c),
+        None => path.push((l, t)),
+    }
+
+    // 2. Left edge straight down.
+    let left_from = top_left.map(|c| c.end()).unwrap_or((l, t));
+    let left_to = bottom_left.map(|c| c.start()).unwrap_or((l, b));
+    for i in 0..=straight_steps {
+        let f = i as f32 / straight_steps as f32;
+        path.push((
+            left_from.0 + (left_to.0 - left_from.0) * f,
+            left_from.1 + (left_to.1 - left_from.1) * f,
+        ));
+    }
+
+    // 3. Bottom-left corner.
+    if let Some(c) = &bottom_left {
+        sample_arc(&mut path, c);
+    }
+
+    // 4. Bottom edge across.
+    let bottom_from = bottom_left.map(|c| c.end()).unwrap_or((l, b));
+    let bottom_to = bottom_right.map(|c| c.start()).unwrap_or((r, b));
+    for i in 0..=bottom_steps {
+        let f = i as f32 / bottom_steps as f32;
+        path.push((bottom_from.0 + (bottom_to.0 - bottom_from.0) * f, bottom_from.1));
+    }
+
+    // 5. Bottom-right corner.
+    if let Some(c) = &bottom_right {
+        sample_arc(&mut path, c);
+    }
+
+    // 6. Right edge straight up.
+    let right_from = bottom_right.map(|c| c.end()).unwrap_or((r, b));
+    let right_to = top_right.map(|c| c.start()).unwrap_or((r, t));
+    for i in 0..=straight_steps {
+        let f = i as f32 / straight_steps as f32;
+        path.push((
+            right_from.0 + (right_to.0 - right_from.0) * f,
+            right_from.1 + (right_to.1 - right_from.1) * f,
+        ));
+    }
+
+    // 7. Top-right shoulder / rounded corner / hard corner.
+    match &top_right {
+        Some(c) => sample_arc(&mut path, c),
+        None => path.push((r, t)),
+    }
+
+    path
 }
