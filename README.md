@@ -1,13 +1,15 @@
 <p align="center">
-  <img src="assets/file_00000000305c821187409948f43d9797.png" alt="Venu logo" width="180">
+  <img src="assets/file_00000000305c821187409948f43d9797.png" alt="Venu logo" width="120">
 </p>
+
+<h1 align="center">Venu</h1>
 
 <p align="center">
   <strong>Dynamic Notch for Windows</strong>
 </p>
 
 <p align="center">
-  Venu is a native Dynamic Notch and desktop companion for Windows 10 and Windows 11.
+  A native desktop companion for Windows 10 and Windows 11 that brings media controls, notifications, system information, reminders, and AI coding usage into a compact glass notch.
 </p>
 
 <p align="center">
