@@ -3,140 +3,298 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/imnakul/venu/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/imnakul/venu/ci.yml?branch=main&label=build&style=flat-square" alt="Build status"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0A0A0D.svg?style=flat-square" alt="Platform: Windows">
-  <img src="https://img.shields.io/badge/built%20with-Rust-orange.svg?style=flat-square" alt="Built with Rust">
+  <strong>Your Windows desktop, alive.</strong>
 </p>
 
-## Overview
+<p align="center">
+  Venu is a native Dynamic Notch and desktop companion for Windows 10 and Windows 11.
+</p>
 
-Venu is a high-performance Dynamic Notch and desktop HUD suite for Windows built in Rust. It pairs an expandable top-bezel Dynamic Island with a customizable scrolling edge marquee, providing live background blur, interactive media playback controls, a multi-format clock, instant desktop alerts, and precision theme customizers.
+<p align="center">
+  <a href="https://github.com/imnakul/venu---Dynamic-Notch-for-Windows/releases"><img src="https://img.shields.io/github/v/release/imnakul/venu---Dynamic-Notch-for-Windows?style=flat-square&label=download" alt="Latest release"></a>
+  <a href="https://github.com/imnakul/venu---Dynamic-Notch-for-Windows/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/imnakul/venu---Dynamic-Notch-for-Windows/ci.yml?branch=main&label=build&style=flat-square" alt="Build status"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0A0A0D.svg?style=flat-square" alt="Platform: Windows">
+  <img src="https://img.shields.io/badge/built%20with-Rust-orange.svg?style=flat-square" alt="Built with Rust">
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License: MIT">
+</p>
 
-The application operates locally with zero telemetry, zero cloud dependencies, and minimal system resource footprint, rendering via hardware-accelerated Direct2D and DirectWrite.
+<p align="center">
+  <img src="assets/logo.svg" alt="Venu Dynamic Notch for Windows" width="720">
+</p>
 
-## Core Features
+## What is Venu?
 
-### 1. Dynamic Island / Notch HUD
-- **Interactive Bezel Panel**: Sits flush at the top or bottom of your monitor, expanding smoothly on hover with spring physics animations.
-- **Carousel Slides**:
-  - **Status Slide**: Displays daily focus priorities and checklist items with clean status pills.
-  - **Clock Slide**: Oversized digital clock with 12-hour or 24-hour formats and date presentation.
-  - **Media Controls Slide**: Windows System Media Transport Controls (SMTC) integration displaying current track title, artist, live playback status, and interactive controls (play, pause, next, previous).
-  - **Photo and Visual Slide**: Framed wallpaper preview and image rendering via Windows Imaging Component (WIC).
-  - **Marquee Quick Slide**: Displays active scrolling reminder text directly inside the notch.
-- **Pin Mode**: Lock the island in an expanded state so it remains open while you work.
-- **Mouse Wheel Navigation**: Scroll over the notch to cycle through slides seamlessly.
-- **Click-Through Option**: Optional pass-through mode allows mouse clicks to reach underlying applications while preserving hover activation.
+Venu brings a Dynamic Island-style experience to Windows and turns the unused space around the top of your desktop into a useful, contextual information surface.
 
-### 2. Glass Finishes and Surface Themes
-- **Frosted Glass**: Balanced live background blur with specular rim highlight and subtle translucent tinting.
-- **Transparent (Clear Glass)**: Crystal-clear see-through glass with zero blur, subtle specular borders, and high-contrast typography.
-- **Blurred (Heavy Diffusion)**: Deep Gaussian-style diffusion blur that blends background windows into smooth ambient gradients.
-- **Acrylic**: Windows Fluent Acrylic style with balanced diffusion and rich ambient tinting.
-- **Dark (Obsidian)**: Deep dark panel engineered to blend into physical laptop bezels and dark wallpapers.
-- **Light (Bone White)**: Clean white panel with dark typography for light desktop environments.
-- **DWM Capture Exclusion**: Prevents recursive capture feedback loops by isolating the notch from desktop sampling during live blur rendering.
+See the time, control media, read notifications, track your current focus, display reminders, monitor AI coding tool usage, and receive alerts from developer tools without constantly switching windows.
 
-### 3. Scrolling Edge Marquee
-- **Multi-Edge Support**: Run the scrolling marquee along any combination of the Top, Bottom, Left, and Right screen edges.
-- **Typography and Script Support**: Full Unicode rendering via DirectWrite supporting Latin, Devanagari, CJK scripts, and symbols.
-- **Geometry Controls**: Configurable strip thickness, edge clearance padding (to avoid covering taskbars or window title bars), phrase spacing, and scroll speed/direction.
-- **Window Layering**: Full Always-on-Top support and transparent click-through mode.
+Venu is designed to feel native, lightweight, and unobtrusive. It runs locally, uses hardware-accelerated rendering, and does not require an account or cloud service.
 
-### 4. Custom Modern Color Panel
-- **Figma-Grade Color Editor**: Replaces stock color pickers with a dedicated, precision color management suite.
-- **Interactive Trigger Capsule**: Displays real-time color swatches with checkerboard transparency underlays and hex code indicators.
-- **2D Saturation/Value Canvas**: Hardware-accelerated bilinear gradient mesh with dual-ring precision reticle.
-- **Spectrum Hue and Alpha Sliders**: Continuous 12-segment rainbow spectrum slider and transparency slider with live percentage readouts.
-- **Multi-Format Input Modes**:
-  - **HEX**: Hex code input with quick-copy clipboard button and opacity drag values.
-  - **RGB**: Individual 0 to 255 channels for Red, Green, Blue, and Alpha.
-  - **HSV**: Intuitive degree and percentage channels (0 to 360 degrees Hue, 0 to 100 percent Saturation and Value).
-- **Curated Swatches Palette**: Instant one-click presets covering modern dark tones, light neutrals, and vivid accents.
+## Why Venu?
 
-### 5. Theme and Wallpaper Engine
-- **Wallpaper Color Extraction**: Samples current desktop wallpaper or imported images to extract dominant accent tones.
-- **Adaptive UI Themes**: Switch settings UI between System, Light, and Dark palettes with smooth 200ms cross-fade animations.
-- **Native File Dialog**: Import custom images and wallpapers via native Windows Shell API.
+Your desktop is where you already work. Venu puts useful information where you can see it without adding another full application window.
 
-### 6. System Tray and Window Management
-- **Background Execution**: Closing or hiding the settings window minimizes the application to the Windows notification area (System Tray).
-- **Quick Tray Menu**: Left-click to open settings, right-click to access quick toggles for the Notch, Edge Marquee, or application exit.
-- **Single-Instance Management**: Ensures reliable window restoration and foreground focusing without duplicate processes.
+- Dynamic Notch for Windows
+- Live media controls and now-playing information
+- Windows desktop notifications
+- Claude, Codex, and Antigravity usage tracking
+- AI coding workflow notifications
+- Scrolling edge marquee for reminders, notes, and text
+- Custom glass, acrylic, blur, transparent, dark, and light surfaces
+- Wallpaper-aware adaptive colors
+- Native Windows system tray integration
+- Local configuration with no telemetry or cloud dependency
 
-### 7. Notification Hub and Agent Hooks
-- **Live Desktop Alerts**: Dynamic toast notifications expand smoothly out of the collapsed notch with spring physics.
-- **Notifications Slide**: Dedicated notification center slide with unread badges, card inspection, individual dismissal, and batch clear options.
-- **Developer and AI Agent Integration**: CLI scripts in `scripts/notch-hooks/` enable external tools, build scripts, and AI agents (such as Antigravity, Claude Code, and Codex) to deliver instant desktop HUD alerts directly to the notch.
+## AI Coding Usage Tracker
 
-## How to Use Features
+Venu can display AI coding tool usage directly inside the Windows Dynamic Notch.
 
-### Using the Dynamic Island (Notch)
-1. **Expanding the Panel**: Move your mouse cursor to the top center of your screen. The notch will smoothly expand.
-2. **Switching Slides**: Use your mouse scroll wheel while hovering over the notch to walk through active slides (Status, Clock, Media, Photo, Marquee).
-3. **Pinning Open**: Click the small circle icon on the right side of the expanded panel to pin it open. Click again to unpin and allow auto-collapse on mouse leave.
-4. **Controlling Media**: When music or videos are playing on Windows, switch to the Media slide to control playback or view track titles and artists.
-5. **Adjusting Placement**: In Settings > Notch, change the alignment (Top or Bottom), monitor target, width, height, and vertical offset.
+Supported usage views include:
 
-### Configuring Edge Marquee
-1. Open Settings > Text to enter your custom reminder, quote, or note.
-2. Open Settings > Appearance to toggle which screen edges are active (Top, Bottom, Left, Right).
-3. Adjust thickness and clearance padding so the marquee sits neatly outside your taskbar and window borders.
-4. Set custom colors and opacity using the Color Panel.
-5. In Settings > Behavior, adjust scroll speed, direction (forward/reverse), and click-through options.
+- **Claude Code**: context window, session cost, and rate limits
+- **OpenAI Codex**: usage information directly in the notch
+- **Google Antigravity**: usage information directly in the notch
 
-### Customizing Colors and Themes
-1. Open any color setting (e.g. Accent Color, Panel Color, Marquee Text Color).
-2. Click the color capsule to reveal the modern Color Panel.
-3. Drag inside the 2D gradient box to adjust saturation and brightness.
-4. Slide the rainbow bar to change Hue, and slide the checkerboard bar to set opacity.
-5. Switch between HEX, RGB, and HSV tabs to enter exact values or click a preset swatch.
+This makes Venu especially useful for developers who spend most of their day working with AI coding agents. Instead of opening separate dashboards or repeatedly checking terminal output, important usage information can stay visible in the desktop HUD.
+
+Venu also includes notification hooks for developer tools and AI agents such as Claude Code, Codex, and Antigravity, allowing scripts and development workflows to send events directly to the Dynamic Notch.
+
+## Features
+
+### Dynamic Notch / Desktop HUD
+
+A compact Dynamic Island-style panel that expands when you need it and stays out of the way when you do not.
+
+- Smooth spring-based expansion and collapse
+- Top or bottom placement
+- Configurable monitor, width, height, and offset
+- Multiple information slides
+- Mouse wheel navigation
+- Pin mode for keeping the panel expanded
+- Optional click-through mode
+- Automatic mode that can prioritize active notifications, media, or the clock
+
+Available slides include:
+
+- **Status**: Focus and today's priorities
+- **Clock**: Large digital clock and date
+- **Media**: Current track, artist, artwork, and playback controls
+- **Notifications**: Notification center and unread indicators
+- **Wallpaper**: Image preview with optional caption
+- **Marquee**: Moving reminder or custom text
+- **AI Usage**: Claude, Codex, and Antigravity usage information
+
+### Media Controls
+
+Control media playback without leaving your current application.
+
+Venu integrates with Windows System Media Transport Controls to show the currently playing track, artist, artwork, playback state, and controls for play, pause, previous, and next.
+
+### Notifications
+
+Turn the Dynamic Notch into a lightweight notification hub.
+
+- Live desktop alerts
+- Unread notification indicators
+- Notification center
+- Individual dismissal
+- Clear all notifications
+- Application-specific colors
+- Custom animated notification glow styles
+- Local webhook support for external tools and scripts
+
+### AI Agent and Developer Notifications
+
+Venu can act as a small desktop HUD for your development workflow.
+
+CLI hooks in `scripts/notch-hooks/` allow external tools, build scripts, AI agents, and development workflows to send instant notifications to Venu.
+
+This can be useful for events such as:
+
+- AI coding agent task completion
+- Long-running build completion
+- Test results
+- Deployment status
+- Background scripts finishing
+- Agent attention or approval requests
+
+### Edge Marquee
+
+Display scrolling text around the edges of your Windows desktop.
+
+- Top, bottom, left, and right edges
+- Custom text and reminders
+- Adjustable speed and direction
+- Configurable thickness and spacing
+- Custom colors and opacity
+- Always-on-top support
+- Click-through mode
+- Unicode support including Latin, Devanagari, CJK, and symbols
+
+Use it for reminders, quotes, status information, temporary notes, or anything you want to keep visible while working.
+
+### Glass and Surface Themes
+
+Venu includes multiple visual treatments designed to work with different Windows desktops and wallpapers.
+
+- Dark / Obsidian
+- Light
+- Frosted Glass
+- Transparent Glass
+- Blurred
+- Windows Fluent Acrylic
+
+The notch can sample the desktop wallpaper and extract dominant colors for adaptive accents and themes.
+
+### Modern Color Editor
+
+Venu includes a precision color editor instead of relying on the default Windows color picker.
+
+- 2D saturation and value canvas
+- Hue spectrum slider
+- Alpha slider
+- HEX input
+- RGB input
+- HSV input
+- Curated color swatches
+- Live opacity and color preview
+
+### System Tray and Windows Integration
+
+Venu is designed to run quietly in the background.
+
+- System tray support
+- Quick controls from the tray
+- Single-instance application behavior
+- Native Windows file dialogs
+- Windows 10 and Windows 11 support
+- Local JSON configuration
+
+## Privacy First
+
+Venu is designed as a local-first Windows application.
+
+- No account required
+- No telemetry
+- No cloud dependency
+- No mandatory online service
+- Configuration stored locally on your PC
+
+AI usage information is displayed locally by Venu based on the integrations and local data available to the application.
 
 ## Installation
 
-### Option 1: Download Release Binary
-Download the latest `venu.exe` from the GitHub Releases page and run it directly. No installer or administrative permissions required.
+### Download Venu
 
-### Option 2: Build from Source
-Requires the [Rust toolchain](https://www.rust-lang.org/tools/install) (stable) on Windows 10 or Windows 11.
+Download the latest Windows release from the [GitHub Releases](https://github.com/imnakul/venu---Dynamic-Notch-for-Windows/releases) page and run `venu.exe`.
+
+No installer or administrator permissions are required for the portable release.
+
+### Build from Source
+
+Venu is built with Rust and targets Windows 10 and Windows 11.
+
+Install the stable [Rust toolchain](https://www.rust-lang.org/tools/install), then run:
 
 ```bash
-git clone https://github.com/imnakul/venu.git
-cd venu
+git clone https://github.com/imnakul/venu---Dynamic-Notch-for-Windows.git
+cd venu---Dynamic-Notch-for-Windows
 cargo build --release
 ```
 
-The compiled binary will be located at `target/release/venu.exe`.
+The compiled executable will be available at:
 
-## Configuration Storage
-
-All preferences and states are saved automatically to a local JSON file at:
-
+```text
+target/release/venu.exe
 ```
+
+## How to Use Venu
+
+### Dynamic Notch
+
+1. Move your cursor to the configured edge of the screen.
+2. The Dynamic Notch expands automatically.
+3. Scroll over the notch to move between active slides.
+4. Use the pin control to keep it expanded.
+5. Configure placement, size, monitor, and behavior from Settings > Notch.
+
+### AI Usage Tracker
+
+Open the AI Usage slide to view supported AI coding tool usage directly in the notch. Configure the available integrations from the corresponding Venu settings.
+
+### Edge Marquee
+
+1. Open Settings > Text.
+2. Enter the text you want to display.
+3. Open Settings > Appearance and select the screen edges.
+4. Adjust thickness, spacing, color, and opacity.
+5. Configure speed, direction, and click-through behavior under Settings > Behavior.
+
+### Colors and Themes
+
+1. Open any Venu color setting.
+2. Select the color capsule to open the color editor.
+3. Adjust saturation, brightness, hue, and opacity.
+4. Use HEX, RGB, or HSV input when precise values are required.
+5. Select a surface theme such as Dark, Frosted, Transparent, Blurred, or Acrylic.
+
+## Configuration
+
+Venu automatically stores preferences and state locally at:
+
+```text
 %APPDATA%\venu\config.json
 ```
 
-To reset the application to factory defaults, simply delete this file while the application is closed.
+To reset Venu to its default configuration, close the application and delete this file.
 
-## Architecture and Technology Stack
+## Technology
 
-- **Language**: Rust (2021 Edition)
-- **GUI Framework**: egui and eframe for the settings interface
-- **Graphics Pipeline**: Direct2D and DirectWrite via Microsoft Windows-rs bindings
-- **Backdrop Compositor**: GDI screen capture with DWM capture exclusion and bilinear Direct2D interpolation
-- **Media Integration**: Windows System Media Transport Controls (SMTC / WinRT)
-- **Typography**: Plus Jakarta Sans and Noto Sans Devanagari (SIL Open Font License)
+Venu is built as a native Windows desktop application with a focus on performance and responsive visual rendering.
+
+- **Language**: Rust 2021
+- **GUI**: egui and eframe
+- **Graphics**: Direct2D and DirectWrite through Windows bindings
+- **Backdrop**: GDI screen capture with DWM capture exclusion and Direct2D interpolation
+- **Media**: Windows System Media Transport Controls (SMTC / WinRT)
+- **Typography**: Plus Jakarta Sans and Noto Sans Devanagari
+
+## For Developers
+
+Venu is also designed to be useful inside a developer workflow.
+
+External applications can communicate with the Venu notification system through local hooks and the notification webhook. This makes it possible to integrate Venu with scripts, CI workflows, AI coding agents, development tools, and other local applications.
+
+The goal is simple: when something important finishes in the background, your desktop should be able to tell you without forcing you to keep another terminal or dashboard open.
+
+## Roadmap
+
+Venu is actively evolving. Planned and experimental areas include improvements to:
+
+- AI coding tool integrations
+- Dynamic Notch information surfaces
+- Notification integrations
+- Windows desktop integration
+- Customization and themes
+- Developer automation hooks
 
 ## Contributing
 
-Contributions and bug reports are welcome. Before submitting pull requests, ensure your changes compile with zero warnings:
+Contributions, ideas, and bug reports are welcome.
+
+Before submitting changes, run:
 
 ```bash
 cargo fmt --check
 cargo check
 ```
 
+Please keep changes focused and ensure the project builds without warnings where practical.
+
 ## License
 
 Venu is licensed under the [MIT License](LICENSE).
+
+## Keywords
+
+Venu, Dynamic Notch for Windows, Dynamic Island for Windows, Windows Dynamic Island, Windows notch, Windows desktop HUD, Windows desktop companion, Windows notification HUD, Windows media controls, Windows desktop customization, Windows productivity tool, Windows AI coding tools, Claude Code usage tracker, Claude usage tracker, Codex usage tracker, OpenAI Codex usage, Google Antigravity usage tracker, Antigravity usage tracker, AI coding agent notifications, Windows developer tools, Windows Rust application, Rust desktop application, Windows 10, Windows 11.
