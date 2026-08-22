@@ -780,6 +780,10 @@ pub struct FlashConfig {
     /// Paint the text with a gradient of every colour instead of one solid
     /// colour per flash.
     pub gradient_text: bool,
+    /// A glare sweeping left to right across the text, once per flash.
+    pub shine: bool,
+    /// How long that one pass takes, in seconds.
+    pub shine_speed_secs: f32,
     /// Image height as a fraction of the screen height.
     pub image_scale: f32,
     /// What is drawn behind the content block.
@@ -815,6 +819,8 @@ impl Default for FlashConfig {
             },
             text_colors: vec![[1.0, 1.0, 1.0, 1.0]],
             gradient_text: false,
+            shine: true,
+            shine_speed_secs: 1.2,
             image_scale: 0.5,
             bg_kind: FlashBackground::Transparent,
             bg_strength: 0.6,
@@ -845,6 +851,10 @@ impl FlashConfig {
 
     pub fn safe_anim_secs(&self) -> f32 {
         self.anim_speed_secs.clamp(0.1, 3.0)
+    }
+
+    pub fn safe_shine_secs(&self) -> f32 {
+        self.shine_speed_secs.clamp(0.2, 8.0)
     }
 
     /// The message this turn shows. `turn` is the flash counter, so the list

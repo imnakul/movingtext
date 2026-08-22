@@ -1559,9 +1559,46 @@ impl SettingsApp {
                     {
                         *changed = true;
                     }
+                    ui.add_space(14.0);
+                    if ui
+                        .checkbox(&mut cfg.flash.shine, "Shine sweep")
+                        .on_hover_text(
+                            "After the text has appeared, a single wave crosses it from the \
+                             left end to the right, roughly at reading pace. The Shine speed \
+                             control below sets how long that one pass takes.",
+                        )
+                        .changed()
+                    {
+                        *changed = true;
+                    }
                 });
             },
         );
+
+        // Greyed out rather than left looking live but inert when the shine
+        // itself is off.
+        ui.add_enabled_ui(cfg.flash.shine, |ui| {
+            Self::row_stacked(
+                ui,
+                "Shine speed",
+                Some(
+                    "How long the single wave takes to cross the text, once it has settled \
+                      on screen. Around a second reads like natural reading pace.",
+                ),
+                |ui| {
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut cfg.flash.shine_speed_secs, 0.2..=5.0)
+                                .suffix(" s")
+                                .step_by(0.1),
+                        )
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                },
+            );
+        });
     }
 
     fn sec_flash_backdrop(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {

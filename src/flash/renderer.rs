@@ -380,7 +380,9 @@ impl FlashRenderer {
                 a: 0.0,
             }));
 
-            let _ = self.paint_block(&target, cfg, phase, width, height, origin_x, origin_y, turn);
+            let _ = self.paint_block(
+                &target, cfg, phase, elapsed, width, height, origin_x, origin_y, turn,
+            );
 
             target.EndDraw(None, None)?;
         }
@@ -423,6 +425,7 @@ impl FlashRenderer {
         t: &ID2D1DCRenderTarget,
         cfg: &FlashConfig,
         phase: Phase,
+        elapsed: f32,
         w: u32,
         h: u32,
         origin_x: i32,
@@ -530,6 +533,9 @@ impl FlashRenderer {
                     &brush,
                     D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
                 );
+                if cfg.shine {
+                    let _ = self.paint_shine(t, cfg, elapsed, text_c, tp, p.alpha);
+                }
             }
 
             t.SetTransform(&scale_matrix(1.0));
@@ -696,6 +702,98 @@ impl FlashRenderer {
             };
             Some(brush.cast().ok()?)
         }
+    }
+
+    /// The shine: the same glyphs drawn a second time with a narrow diagonal
+    /// band of white, sweeping left to right across the text. Outside the band
+    /// the gradient clamps to fully transparent, so only the passing glare is
+    /// added to whatever the base brush already drew.
+    ///
+    /// The wave waits for the text to finish appearing, then crosses once at
+    /// a steady, reading-like pace — like eyes tracking the line — and is then
+    /// gone. Starting it during the entry animation would tangle the two
+    /// movements; repeating it would read as a loading spinner.
+    fn paint_shine(
+        &self,
+        t: &ID2D1DCRenderTarget,
+        cfg: &FlashConfig,
+        elapsed: f32,
+        text_c: (f32, f32),
+        tp: &TextPart,
+        anim_alpha: f32,
+    ) -> Option<()> {
+        let u = ((elapsed - cfg.safe_anim_secs()) / cfg.safe_shine_secs()).clamp(0.0, 1.0);
+
+        // The band starts fully off the left edge and leaves fully off the
+        // right, so the glare grows in and out rather than popping. Narrow
+        // enough to read as a wave, not a flood — a glare covering half the
+        // text is a flash within the flash.
+        let band_w = (tp.w * 0.25).clamp(40.0, 300.0);
+        let left = text_c.0 - tp.w * 0.5;
+        let centre_x = left - band_w + u * (tp.w + band_w * 2.0);
+        // Tilted, because a straight vertical glare reads as a scanline.
+        let tilt = tp.h * 0.4;
+
+        let a = 0.9 * anim_alpha.clamp(0.0, 1.0);
+        let stops = [
+            D2D1_GRADIENT_STOP {
+                position: 0.0,
+                color: D2D1_COLOR_F {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 0.0,
+                },
+            },
+            D2D1_GRADIENT_STOP {
+                position: 0.5,
+                color: D2D1_COLOR_F {
+                    r: a,
+                    g: a,
+                    b: a,
+                    a,
+                },
+            },
+            D2D1_GRADIENT_STOP {
+                position: 1.0,
+                color: D2D1_COLOR_F {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 0.0,
+                },
+            },
+        ];
+
+        unsafe {
+            let collection = t
+                .CreateGradientStopCollection(&stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)
+                .ok()?;
+            let gradient_props = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                startPoint: D2D_POINT_2F {
+                    x: centre_x - band_w * 0.5,
+                    y: text_c.1 - tilt,
+                },
+                endPoint: D2D_POINT_2F {
+                    x: centre_x + band_w * 0.5,
+                    y: text_c.1 + tilt,
+                },
+            };
+            let brush = t
+                .CreateLinearGradientBrush(&gradient_props, None, &collection)
+                .ok()?;
+            t.DrawTextLayout(
+                D2D_POINT_2F {
+                    x: text_c.0 - tp.box_w * 0.5,
+                    y: text_c.1 - tp.box_h * 0.5,
+                },
+                &tp.layout,
+                &brush,
+                D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
+            );
+        }
+
+        Some(())
     }
 
     fn ensure_image(&mut self, t: &ID2D1DCRenderTarget, path: &str) -> Option<ID2D1Bitmap> {

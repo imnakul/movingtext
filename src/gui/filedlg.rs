@@ -23,11 +23,16 @@ pub fn pick_image(initial: &str, title: &str) -> Option<String> {
     // guaranteed to decode: the renderer degrades gracefully when a picked
     // file turns out not to load, but the dialog should never be the thing
     // that hides a picture from the user.
+    //
+    // The label is only display text — the pattern is what filters — so it
+    // spells the formats out (common ones first, since a narrow dialog box
+    // truncates the tail) while the pattern quietly accepts everything,
+    // including the .jfif the label skips.
     let mut filter: Vec<u16> = Vec::new();
     for part in [
-        "Images",
+        "Images (*.jpg, *.jpeg, *.png, *.gif, *.webp, *.bmp, *.tif, *.tiff, *.ico, *.avif, *.heic, *.heif, *.svg)",
         "*.png;*.jpg;*.jpeg;*.jfif;*.bmp;*.gif;*.webp;*.tif;*.tiff;*.ico;*.avif;*.heic;*.heif;*.svg",
-        "All files",
+        "All files (*.*)",
         "*.*",
     ] {
         filter.extend(part.encode_utf16());
