@@ -624,6 +624,262 @@ impl NotchConfig {
     }
 }
 
+// ---------------------------------------------------------------------------
+// FlashScreen
+// ---------------------------------------------------------------------------
+
+/// What the periodic flash puts on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FlashContent {
+    #[default]
+    Text,
+    Image,
+    /// The image and the text share one flash, side by side or stacked.
+    Both,
+}
+
+impl FlashContent {
+    pub const ALL: [FlashContent; 3] =
+        [FlashContent::Text, FlashContent::Image, FlashContent::Both];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            FlashContent::Text => "Text",
+            FlashContent::Image => "Image",
+            FlashContent::Both => "Text + Image",
+        }
+    }
+}
+
+/// How the text sits against the image when the flash carries both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FlashLayout {
+    #[default]
+    TextTop,
+    TextBottom,
+    TextLeft,
+    TextRight,
+}
+
+impl FlashLayout {
+    pub const ALL: [FlashLayout; 4] = [
+        FlashLayout::TextTop,
+        FlashLayout::TextBottom,
+        FlashLayout::TextLeft,
+        FlashLayout::TextRight,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            FlashLayout::TextTop => "Text on top",
+            FlashLayout::TextBottom => "Text below",
+            FlashLayout::TextLeft => "Text on left",
+            FlashLayout::TextRight => "Text on right",
+        }
+    }
+}
+
+/// What sits behind the content block. Drawn only behind the message itself,
+/// never across the whole screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FlashBackground {
+    #[default]
+    Transparent,
+    /// Blurred desktop behind the block, plus a light wash.
+    Frosted,
+    /// Flat white tint.
+    White,
+    /// Flat dark tint.
+    Dark,
+    /// Blurred desktop behind the block, no tint.
+    Blur,
+}
+
+impl FlashBackground {
+    pub const ALL: [FlashBackground; 5] = [
+        FlashBackground::Transparent,
+        FlashBackground::Frosted,
+        FlashBackground::White,
+        FlashBackground::Dark,
+        FlashBackground::Blur,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            FlashBackground::Transparent => "Transparent",
+            FlashBackground::Frosted => "Frosted",
+            FlashBackground::White => "White overlay",
+            FlashBackground::Dark => "Dark overlay",
+            FlashBackground::Blur => "Blur",
+        }
+    }
+
+    /// Frosted and Blur sample the screen behind the window, which needs the
+    /// window kept out of its own capture.
+    pub fn samples_desktop(self) -> bool {
+        matches!(self, FlashBackground::Frosted | FlashBackground::Blur)
+    }
+}
+
+/// How each flash arrives and leaves. One choice covers both halves: a slide
+/// that enters from one edge exits through the other, and the zoom that
+/// reveals from the centre folds back into it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FlashAnim {
+    /// Reveals with a zoom in from the centre, leaves with a fade + zoom out.
+    #[default]
+    ZoomCenter,
+    /// Sweeps in from the left edge, settles in the centre, exits to the right.
+    SlideLeftToRight,
+    /// Sweeps in from the right edge, settles in the centre, exits to the left.
+    SlideRightToLeft,
+    /// Plain opacity fade in and out, no movement.
+    Fade,
+}
+
+impl FlashAnim {
+    pub const ALL: [FlashAnim; 4] = [
+        FlashAnim::ZoomCenter,
+        FlashAnim::SlideLeftToRight,
+        FlashAnim::SlideRightToLeft,
+        FlashAnim::Fade,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            FlashAnim::ZoomCenter => "Zoom reveal from center",
+            FlashAnim::SlideLeftToRight => "Slide: left to right",
+            FlashAnim::SlideRightToLeft => "Slide: right to left",
+            FlashAnim::Fade => "Fade: soft in, soft out",
+        }
+    }
+}
+
+/// The FlashScreen: every so often, for a few seconds, a line of text, an
+/// image, or both appears in the middle of the screen — then leaves on its
+/// own. Everything that can hold more than one entry rotates: each flash uses
+/// the next text, the next image, and the next colour in turn.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FlashConfig {
+    pub enabled: bool,
+    /// Seconds between the end of one flash and the start of the next.
+    pub interval_secs: f32,
+    /// How long the flash stays at full presence, before its exit begins.
+    pub duration_secs: f32,
+    pub content: FlashContent,
+    /// Only meaningful when the content is Both.
+    pub layout: FlashLayout,
+    /// The messages, rotated one per flash.
+    pub texts: Vec<String>,
+    /// Image paths, rotated one per flash.
+    pub images: Vec<String>,
+    pub font: FontConfig,
+    /// Text colours, rotated one per flash — or swept as a gradient.
+    pub text_colors: Vec<[f32; 4]>,
+    /// Paint the text with a gradient of every colour instead of one solid
+    /// colour per flash.
+    pub gradient_text: bool,
+    /// Image height as a fraction of the screen height.
+    pub image_scale: f32,
+    /// What is drawn behind the content block.
+    pub bg_kind: FlashBackground,
+    /// 0 (invisible) to 1 (full effect) — the strength of the background.
+    pub bg_strength: f32,
+    /// How far the background extends beyond the content, in pixels, on
+    /// every side.
+    pub bg_padding: f32,
+    pub anim: FlashAnim,
+    /// Length of the entry/exit animation. Short is snappy, long is smooth.
+    pub anim_speed_secs: f32,
+    pub monitor_index: usize,
+    pub click_through: bool,
+    pub always_on_top: bool,
+}
+
+impl Default for FlashConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_secs: 300.0,
+            duration_secs: 5.0,
+            content: FlashContent::Text,
+            layout: FlashLayout::TextTop,
+            texts: vec!["⚡ Stay focused!".to_string()],
+            images: Vec::new(),
+            font: FontConfig {
+                family: "Segoe UI".to_string(),
+                size: 96.0,
+                bold: true,
+                italic: false,
+            },
+            text_colors: vec![[1.0, 1.0, 1.0, 1.0]],
+            gradient_text: false,
+            image_scale: 0.5,
+            bg_kind: FlashBackground::Transparent,
+            bg_strength: 0.6,
+            bg_padding: 48.0,
+            anim: FlashAnim::ZoomCenter,
+            anim_speed_secs: 0.6,
+            monitor_index: 0,
+            click_through: true,
+            always_on_top: true,
+        }
+    }
+}
+
+/// What a flash shows when the message list holds only blank lines — a flash
+/// of nothing would look like the feature is broken.
+pub const DEFAULT_FLASH_TEXT: &str = "⚡ Stay focused!";
+
+impl FlashConfig {
+    /// Intervals round-trip through JSON, so a hand-edited zero or negative
+    /// must not reach the frame loop.
+    pub fn safe_interval(&self) -> f32 {
+        self.interval_secs.max(5.0)
+    }
+
+    pub fn safe_duration(&self) -> f32 {
+        self.duration_secs.clamp(0.5, 600.0)
+    }
+
+    pub fn safe_anim_secs(&self) -> f32 {
+        self.anim_speed_secs.clamp(0.1, 3.0)
+    }
+
+    /// The message this turn shows. `turn` is the flash counter, so the list
+    /// walks forward one entry per flash.
+    pub fn text_for_turn(&self, turn: u32) -> &str {
+        if self.texts.is_empty() {
+            return DEFAULT_FLASH_TEXT;
+        }
+        let text = &self.texts[turn as usize % self.texts.len()];
+        if text.trim().is_empty() {
+            DEFAULT_FLASH_TEXT
+        } else {
+            text
+        }
+    }
+
+    /// The image this turn shows. Empty when there is nothing to show.
+    pub fn image_for_turn(&self, turn: u32) -> &str {
+        if self.images.is_empty() {
+            ""
+        } else {
+            self.images[turn as usize % self.images.len()].trim()
+        }
+    }
+
+    /// The colour this turn's text uses, rotating through the list.
+    pub fn color_for_turn(&self, turn: u32) -> [f32; 4] {
+        if self.text_colors.is_empty() {
+            [1.0, 1.0, 1.0, 1.0]
+        } else {
+            self.text_colors[turn as usize % self.text_colors.len()]
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub text: String,
@@ -652,6 +908,8 @@ pub struct AppConfig {
     pub wallpaper: WallpaperConfig,
     #[serde(default)]
     pub marquee: MarqueeConfig,
+    #[serde(default)]
+    pub flash: FlashConfig,
     /// How the settings window itself is painted. Nothing to do with the
     /// overlays — this is only the chrome around the controls.
     #[serde(default)]
@@ -681,6 +939,7 @@ impl Default for AppConfig {
             status: StatusConfig::default(),
             wallpaper: WallpaperConfig::default(),
             marquee: MarqueeConfig::default(),
+            flash: FlashConfig::default(),
             ui_theme: UiTheme::default(),
         }
     }

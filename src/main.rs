@@ -1,4 +1,5 @@
 mod config;
+mod flash;
 mod gui;
 mod notch;
 mod overlay;
@@ -16,6 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 const FRAME_MS: u32 = 16;
 
 use config::AppConfig;
+use flash::FlashManager;
 use gui::SettingsApp;
 use notch::NotchManager;
 use overlay::OverlayManager;
@@ -88,6 +90,7 @@ fn main() {
         let _tray = SystemTray::new().ok();
         let mut manager = OverlayManager::new();
         let mut notch = NotchManager::new(Arc::clone(&overlay_config));
+        let mut flash = FlashManager::new();
         let mut last_instant = Instant::now();
 
         loop {
@@ -115,6 +118,7 @@ fn main() {
             {
                 let cfg = overlay_config.read();
                 manager.render_tick(&cfg, dt);
+                flash.tick(&cfg, dt);
             }
 
             // Takes its own lock: inline editing writes back into the config.

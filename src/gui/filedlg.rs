@@ -13,14 +13,20 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// Ask the user for an image. Returns `None` if they cancel.
-pub fn pick_image(initial: &str) -> Option<String> {
+/// Ask the user for an image. `title` names the dialog, so the flash picker
+/// and the wallpaper picker can each say what they are for. Returns `None` if
+/// they cancel.
+pub fn pick_image(initial: &str, title: &str) -> Option<String> {
     // Null-separated, double-null-terminated pairs, as the API wants them.
     // Built here rather than as a const so the escaping stays readable.
+    // Every image extension users actually meet, not only the ones WIC is
+    // guaranteed to decode: the renderer degrades gracefully when a picked
+    // file turns out not to load, but the dialog should never be the thing
+    // that hides a picture from the user.
     let mut filter: Vec<u16> = Vec::new();
     for part in [
         "Images",
-        "*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp",
+        "*.png;*.jpg;*.jpeg;*.jfif;*.bmp;*.gif;*.webp;*.tif;*.tiff;*.ico;*.avif;*.heic;*.heif;*.svg",
         "All files",
         "*.*",
     ] {
@@ -38,7 +44,7 @@ pub fn pick_image(initial: &str) -> Option<String> {
         buffer[..src.len()].copy_from_slice(&src);
     }
 
-    let title = wide("Choose a wallpaper");
+    let title = wide(title);
 
     let mut ofn = OPENFILENAMEW {
         lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,

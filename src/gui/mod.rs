@@ -5,7 +5,10 @@ use eframe::egui::{
 use parking_lot::RwLock;
 use std::sync::Arc;
 
-use crate::config::{AppConfig, NotchAlign, NotchTheme, SlideKind, StatusItem, UiTheme};
+use crate::config::{
+    AppConfig, FlashAnim, FlashBackground, FlashContent, FlashLayout, NotchAlign, NotchTheme,
+    SlideKind, StatusItem, UiTheme,
+};
 
 mod color_picker;
 mod filedlg;
@@ -101,15 +104,17 @@ pub fn setup_custom_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-/// The three things this app actually is, from the user's point of view: the
-/// notch, the border marquee, and the app itself. Every page belongs to one.
+/// The things this app actually is, from the user's point of view: the
+/// notch, the border marquee, the flash screen, and the app itself. Every
+/// page belongs to one.
 ///
-/// Grouping is the whole point of the rail. A flat list of eleven tabs makes
-/// the reader scan; three short lists make them recognise.
+/// Grouping is the whole point of the rail. A flat list of a dozen tabs makes
+/// the reader scan; short lists make them recognise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Group {
     Notch,
     Marquee,
+    Flash,
     App,
 }
 
@@ -118,6 +123,7 @@ impl Group {
         match self {
             Group::Notch => "NOTCH",
             Group::Marquee => "EDGE MARQUEE",
+            Group::Flash => "FLASH SCREEN",
             Group::App => "APP",
         }
     }
@@ -231,6 +237,14 @@ const PAGES: &[Page] = &[
         draw: SettingsApp::page_edge_motion,
     },
     Page {
+        group: Group::Flash,
+        title: "FlashScreen",
+        blurb: "Every few minutes, for a few seconds, a line of text or an image appears in the \
+                middle of the screen — then leaves on its own. Nothing to dismiss, nothing to \
+                forget.",
+        draw: SettingsApp::page_flashscreen,
+    },
+    Page {
         group: Group::App,
         title: "Preferences",
         blurb: "The settings window itself, and where your settings are kept.",
@@ -267,6 +281,30 @@ fn ease_out(t: f32) -> f32 {
         1.0
     } else {
         1.0 - 2f32.powf(-10.0 * t)
+    }
+}
+
+/// Seconds as a person would say them: "45 s", "5 min", "2 h 30 min".
+///
+/// The flash interval runs from 5 seconds to 4 hours, and a raw seconds read
+/// out ("7200 s") makes the slider's low end unusable.
+fn flash_interval_text(v: f64) -> String {
+    let s = v.round() as u64;
+    if s < 60 {
+        format!("{s} s")
+    } else if s < 3600 {
+        if s % 60 == 0 {
+            format!("{} min", s / 60)
+        } else {
+            format!("{:.1} min", s as f64 / 60.0)
+        }
+    } else {
+        let (h, m) = (s / 3600, (s % 3600) / 60);
+        if m == 0 {
+            format!("{h} h")
+        } else {
+            format!("{h} h {m} min")
+        }
     }
 }
 
@@ -531,6 +569,24 @@ impl SettingsApp {
         Self::sec_edge_motion(ui, cx.cfg, cx.changed);
         Self::divider(ui);
         Self::sec_edge_window(ui, cx.cfg, cx.changed);
+    }
+
+    fn page_flashscreen(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
+        Self::sec_flash_master(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_flash_schedule(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_flash_content(ui, cx.cfg, cx.changed);
+        if cx.cfg.flash.content != FlashContent::Image {
+            Self::divider(ui);
+            Self::sec_flash_type(ui, cx.cfg, cx.changed);
+        }
+        Self::divider(ui);
+        Self::sec_flash_backdrop(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_flash_anim(ui, cx.cfg, cx.changed);
+        Self::divider(ui);
+        Self::sec_flash_behavior(ui, cx.cfg, cx.changed);
     }
 
     fn page_app_prefs(ui: &mut egui::Ui, cx: &mut PageCtx<'_>) {
@@ -1109,6 +1165,574 @@ impl SettingsApp {
             if ui
                 .checkbox(&mut cfg.click_through, "")
                 .on_hover_text("Allow mouse clicks to pass through the text border")
+                .changed()
+            {
+                *changed = true;
+            }
+        });
+    }
+
+    fn sec_flash_master(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "MASTER SWITCH");
+        if ui
+            .checkbox(&mut cfg.flash.enabled, "Show FlashScreen reminders")
+            .changed()
+        {
+            *changed = true;
+        }
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(
+                "Between flashes nothing is on screen and nothing is rendered. When one is \
+                 due, the flash appears at the center of the monitor, stays for its duration, \
+                 and leaves — no toast to dismiss, no sound, no click needed.",
+            )
+            .size(11.0)
+            .color(theme::text_secondary()),
+        );
+        ui.add_space(10.0);
+        if ui
+            .button(RichText::new("⚡ Preview a flash now").strong())
+            .on_hover_text("Plays one flash immediately — works even with the switch off")
+            .clicked()
+        {
+            crate::flash::request_preview();
+        }
+    }
+
+    fn sec_flash_schedule(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "SCHEDULE");
+
+        Self::row_stacked(
+            ui,
+            "Repeat every",
+            Some("How long the screen stays quiet between flashes."),
+            |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (label, secs) in [
+                        ("30 s", 30.0),
+                        ("1 min", 60.0),
+                        ("2 min", 120.0),
+                        ("5 min", 300.0),
+                        ("15 min", 900.0),
+                        ("1 hour", 3600.0),
+                    ] {
+                        let picked = (cfg.flash.interval_secs - secs).abs() < 1.0;
+                        if Self::segment(ui, label, picked).clicked() {
+                            cfg.flash.interval_secs = secs;
+                            *changed = true;
+                        }
+                    }
+                });
+                ui.add_space(8.0);
+                // Any interval at all, on a slider beside the presets: the
+                // presets are for the common cases, not a cage. Logarithmic
+                // because the range runs from seconds to hours, and a linear
+                // slider would spend its whole travel on the hours.
+                let mut secs = cfg.flash.interval_secs.clamp(5.0, 14400.0);
+                if ui
+                    .add(
+                        egui::Slider::new(&mut secs, 5.0..=14400.0)
+                            .logarithmic(true)
+                            .custom_formatter(|v, _| flash_interval_text(v)),
+                    )
+                    .changed()
+                {
+                    cfg.flash.interval_secs = secs;
+                    *changed = true;
+                }
+            },
+        );
+
+        Self::row_stacked(
+            ui,
+            "Flash for",
+            Some("How long each flash stays at full presence before it starts to leave."),
+            |ui| {
+                if ui
+                    .add(
+                        egui::Slider::new(&mut cfg.flash.duration_secs, 1.0..=60.0)
+                            .suffix(" s")
+                            .step_by(0.5),
+                    )
+                    .changed()
+                {
+                    *changed = true;
+                }
+            },
+        );
+    }
+
+    fn sec_flash_content(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "CONTENT");
+
+        Self::row_stacked(ui, "What appears", None, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for option in FlashContent::ALL {
+                    let picked = cfg.flash.content == option;
+                    if Self::segment(ui, option.label(), picked).clicked() {
+                        cfg.flash.content = option;
+                        *changed = true;
+                    }
+                }
+            });
+        });
+
+        if cfg.flash.content == FlashContent::Both {
+            Self::row_stacked(
+                ui,
+                "Layout",
+                Some("How the text sits against the image."),
+                |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for option in FlashLayout::ALL {
+                            let picked = cfg.flash.layout == option;
+                            if Self::segment(ui, option.label(), picked).clicked() {
+                                cfg.flash.layout = option;
+                                *changed = true;
+                            }
+                        }
+                    });
+                },
+            );
+        }
+
+        let wants_text = cfg.flash.content != FlashContent::Image;
+        let wants_image = cfg.flash.content != FlashContent::Text;
+
+        if wants_text {
+            Self::row_stacked(
+                ui,
+                "Messages",
+                Some(
+                    "With more than one, each flash shows the next in turn. Write or paste \
+                      anything — Unicode, Devanagari/Hindi, CJK and emoji are supported.",
+                ),
+                |ui| {
+                    let mut remove: Option<usize> = None;
+                    for (i, text) in cfg.flash.texts.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!("{}.", i + 1))
+                                    .size(12.0)
+                                    .color(theme::text_tertiary()),
+                            );
+                            // Right-to-left so the button claims its width
+                            // first and the field takes exactly what is left.
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.button("Remove").clicked() {
+                                    remove = Some(i);
+                                }
+                                if ui
+                                    .add(
+                                        egui::TextEdit::singleline(text)
+                                            .desired_width(ui.available_width())
+                                            .hint_text("What should flash across your screen?"),
+                                    )
+                                    .changed()
+                                {
+                                    *changed = true;
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+                    }
+                    if let Some(i) = remove {
+                        cfg.flash.texts.remove(i);
+                        *changed = true;
+                    }
+                    if ui
+                        .add_enabled(cfg.flash.texts.len() < 8, egui::Button::new("Add message"))
+                        .clicked()
+                    {
+                        cfg.flash.texts.push(String::new());
+                        *changed = true;
+                    }
+                },
+            );
+        }
+
+        if wants_image {
+            Self::row_stacked(
+                ui,
+                "Images",
+                Some(
+                    "Choose pictures from your PC. With more than one, each flash shows the \
+                      next in turn. PNG, JPG, BMP, GIF or WebP.",
+                ),
+                |ui| {
+                    let mut remove: Option<usize> = None;
+                    for (i, path) in cfg.flash.images.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!("{}.", i + 1))
+                                    .size(12.0)
+                                    .color(theme::text_tertiary()),
+                            );
+                            // Buttons first, in right-to-left, so the path
+                            // field gets exactly the width actually left.
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.button("Remove").clicked() {
+                                    remove = Some(i);
+                                }
+                                if ui.button("Browse...").clicked() {
+                                    if let Some(picked) =
+                                        filedlg::pick_image(path, "Choose a flash image")
+                                    {
+                                        *path = picked;
+                                        *changed = true;
+                                    }
+                                }
+                                if ui
+                                    .add(
+                                        egui::TextEdit::singleline(path)
+                                            .desired_width(ui.available_width())
+                                            .hint_text("C:\\Users\\...\\flash.jpg"),
+                                    )
+                                    .changed()
+                                {
+                                    *changed = true;
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+                    }
+                    if let Some(i) = remove {
+                        cfg.flash.images.remove(i);
+                        *changed = true;
+                    }
+                    if ui
+                        .add_enabled(cfg.flash.images.len() < 8, egui::Button::new("Add image"))
+                        .clicked()
+                    {
+                        cfg.flash.images.push(String::new());
+                        *changed = true;
+                    }
+                },
+            );
+
+            Self::row_stacked(
+                ui,
+                "Image size",
+                Some("How much of the screen height the image takes up."),
+                |ui| {
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut cfg.flash.image_scale, 0.1..=1.0)
+                                .fixed_decimals(2)
+                                .suffix("×"),
+                        )
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                },
+            );
+        }
+    }
+
+    fn sec_flash_type(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "TYPE");
+
+        Self::row_inline(ui, "Font Family", |ui| {
+            let fonts = [
+                "Segoe UI",
+                "Plus Jakarta Sans",
+                "Arial",
+                "Consolas",
+                "Impact",
+                "Microsoft YaHei",
+                "Yu Gothic",
+            ];
+            egui::ComboBox::from_id_salt("flash_font_combo")
+                .selected_text(cfg.flash.font.family.as_str())
+                .show_ui(ui, |ui| {
+                    for f in fonts {
+                        if ui
+                            .selectable_value(&mut cfg.flash.font.family, f.to_string(), f)
+                            .clicked()
+                        {
+                            *changed = true;
+                        }
+                    }
+                });
+        });
+
+        Self::row_stacked(
+            ui,
+            "Font Size",
+            Some(
+                "Flash type runs far larger than the marquees — it is meant to be read from \
+                  across the room for a few seconds, not sat next to all day.",
+            ),
+            |ui| {
+                if ui
+                    .add(egui::Slider::new(&mut cfg.flash.font.size, 12.0..=400.0).text("pt"))
+                    .changed()
+                {
+                    *changed = true;
+                }
+            },
+        );
+
+        ui.horizontal(|ui| {
+            if ui.checkbox(&mut cfg.flash.font.bold, "Bold").changed() {
+                *changed = true;
+            }
+            ui.add_space(16.0);
+            if ui.checkbox(&mut cfg.flash.font.italic, "Italic").changed() {
+                *changed = true;
+            }
+        });
+        ui.add_space(10.0);
+
+        Self::row_stacked(
+            ui,
+            "Text colors",
+            Some(
+                "One color is used as-is. With several, each flash takes the next in turn — \
+                  or turn Gradient on to sweep all of them across the text at once.",
+            ),
+            |ui| {
+                let mut remove: Option<usize> = None;
+                // Read once, outside the loop: the rows borrow the list
+                // mutably, and the Remove enablement only needs the count.
+                let color_count = cfg.flash.text_colors.len();
+                for (i, color) in cfg.flash.text_colors.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{}.", i + 1))
+                                .size(12.0)
+                                .color(theme::text_tertiary()),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui
+                                .add_enabled(color_count > 1, egui::Button::new("Remove"))
+                                .clicked()
+                            {
+                                remove = Some(i);
+                            }
+                            if color_picker::color_picker_button(
+                                ui,
+                                &format!("flash_color_{i}"),
+                                color,
+                            )
+                            .changed()
+                            {
+                                *changed = true;
+                            }
+                        });
+                    });
+                    ui.add_space(4.0);
+                }
+                if let Some(i) = remove {
+                    cfg.flash.text_colors.remove(i);
+                    *changed = true;
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            cfg.flash.text_colors.len() < 6,
+                            egui::Button::new("Add color"),
+                        )
+                        .clicked()
+                    {
+                        // A sensible next pick rather than transparent black:
+                        // warm the wheel a step from whatever is last.
+                        let last = cfg.flash.text_colors.last().copied().unwrap_or([1.0; 4]);
+                        let (h, s, v) = color_picker::rgb_to_hsv(last[0], last[1], last[2]);
+                        let (r, g, b) = color_picker::hsv_to_rgb((h + 0.12) % 1.0, s, v);
+                        cfg.flash.text_colors.push([r, g, b, last[3]]);
+                        *changed = true;
+                    }
+                    ui.add_space(14.0);
+                    if ui
+                        .add_enabled(
+                            cfg.flash.text_colors.len() >= 2,
+                            egui::Checkbox::new(&mut cfg.flash.gradient_text, "Gradient sweep"),
+                        )
+                        .on_hover_text(
+                            "Paints every color as one gradient across the text. Each flash \
+                             starts the sweep on the next color, so it still changes every turn.",
+                        )
+                        .changed()
+                    {
+                        *changed = true;
+                    }
+                });
+            },
+        );
+    }
+
+    fn sec_flash_backdrop(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "BACKGROUND");
+
+        Self::row_stacked(
+            ui,
+            "Style",
+            Some("Drawn behind the message itself — never the whole screen."),
+            |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for option in FlashBackground::ALL {
+                        let picked = cfg.flash.bg_kind == option;
+                        if Self::segment(ui, option.label(), picked).clicked() {
+                            cfg.flash.bg_kind = option;
+                            *changed = true;
+                        }
+                    }
+                });
+            },
+        );
+
+        Self::row_stacked(
+            ui,
+            "Effectiveness",
+            Some(
+                "0% is invisible; 100% is the full effect. For Frosted and Blur this also \
+                  scales how strong the blur is.",
+            ),
+            |ui| {
+                let mut pct = (cfg.flash.bg_strength.clamp(0.0, 1.0) * 100.0).round() as i32;
+                if ui
+                    .add(
+                        egui::Slider::new(&mut pct, 0..=100)
+                            .custom_formatter(|v, _| format!("{}%", v.round() as i64)),
+                    )
+                    .changed()
+                {
+                    cfg.flash.bg_strength = pct as f32 / 100.0;
+                    *changed = true;
+                }
+            },
+        );
+
+        Self::row_stacked(
+            ui,
+            "Padding",
+            Some(
+                "How far the background reaches beyond the message, on every side. Small hugs \
+                  the text; large makes a broad plate of it.",
+            ),
+            |ui| {
+                if ui
+                    .add(egui::Slider::new(&mut cfg.flash.bg_padding, 0.0..=200.0).suffix(" px"))
+                    .changed()
+                {
+                    *changed = true;
+                }
+            },
+        );
+
+        if cfg.flash.bg_kind.samples_desktop() {
+            ui.label(
+                RichText::new(
+                    "While Frosted or Blur is on, the flash is kept out of screenshots and \
+                     screen sharing — that is what stops the blur from sampling itself and \
+                     smearing. Switch to any other style to be captured again.",
+                )
+                .size(11.0)
+                .color(theme::text_secondary()),
+            );
+        }
+    }
+
+    fn sec_flash_anim(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "ANIMATION");
+
+        Self::row_stacked(
+            ui,
+            "Style",
+            Some("How the flash arrives — and how it leaves. Each style covers both halves."),
+            |ui| {
+                egui::ComboBox::from_id_salt("flash_anim_combo")
+                    .selected_text(cfg.flash.anim.label())
+                    .show_ui(ui, |ui| {
+                        for anim in FlashAnim::ALL {
+                            if ui
+                                .selectable_value(&mut cfg.flash.anim, anim, anim.label())
+                                .clicked()
+                            {
+                                *changed = true;
+                            }
+                        }
+                    });
+            },
+        );
+
+        Self::row_stacked(
+            ui,
+            "Animation length",
+            Some("Short is snappy, long is smooth. Applies to the entry and the exit alike."),
+            |ui| {
+                if ui
+                    .add(
+                        egui::Slider::new(&mut cfg.flash.anim_speed_secs, 0.1..=3.0)
+                            .suffix(" s")
+                            .step_by(0.05),
+                    )
+                    .changed()
+                {
+                    *changed = true;
+                }
+            },
+        );
+    }
+
+    fn sec_flash_behavior(ui: &mut egui::Ui, cfg: &mut AppConfig, changed: &mut bool) {
+        Self::section_title(ui, "ON SCREEN");
+
+        Self::row_inline(ui, "Monitor", |ui| {
+            let monitors = crate::notch::window::monitor_rects();
+            let current = cfg
+                .flash
+                .monitor_index
+                .min(monitors.len().saturating_sub(1));
+            let label = monitors
+                .get(current)
+                .map(|m| {
+                    format!(
+                        "Display {} — {}x{}",
+                        current + 1,
+                        m.right - m.left,
+                        m.bottom - m.top
+                    )
+                })
+                .unwrap_or_else(|| "Display 1".to_string());
+
+            egui::ComboBox::from_id_salt("flash_monitor_combo")
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    for (i, m) in monitors.iter().enumerate() {
+                        let text = format!(
+                            "Display {} — {}x{}",
+                            i + 1,
+                            m.right - m.left,
+                            m.bottom - m.top
+                        );
+                        if ui
+                            .selectable_value(&mut cfg.flash.monitor_index, i, text)
+                            .clicked()
+                        {
+                            *changed = true;
+                        }
+                    }
+                });
+        });
+
+        Self::row_inline(ui, "Always On Top", |ui| {
+            if ui
+                .checkbox(&mut cfg.flash.always_on_top, "")
+                .on_hover_text("Keep the flash above all open windows")
+                .changed()
+            {
+                *changed = true;
+            }
+        });
+
+        Self::row_inline(ui, "Click-Through Mode", |ui| {
+            if ui
+                .checkbox(&mut cfg.flash.click_through, "")
+                .on_hover_text("Let clicks pass through the flash to whatever is underneath")
                 .changed()
             {
                 *changed = true;
@@ -1827,7 +2451,9 @@ impl SettingsApp {
                     *changed = true;
                 }
                 if ui.button("Browse...").clicked() {
-                    if let Some(picked) = filedlg::pick_image(&cfg.wallpaper.path) {
+                    if let Some(picked) =
+                        filedlg::pick_image(&cfg.wallpaper.path, "Choose a wallpaper")
+                    {
                         cfg.wallpaper.path = picked;
                         // A new picture invalidates the old framing.
                         cfg.wallpaper.focus_x = 0.5;
@@ -2157,7 +2783,15 @@ impl eframe::App for SettingsApp {
             )
             .show(ctx, |ui| {
                 let before = self.active;
-                Self::draw_nav(ui, &mut self.active);
+                // The rail carries one row per page, and there are more pages
+                // than fit a short window — so the rail scrolls like the page
+                // beside it does, and the last group is never out of reach.
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        Self::draw_nav(ui, &mut self.active);
+                    });
                 if self.active != before {
                     // Direction carries meaning: pages entering from the right
                     // are further down the rail. Without it the movement is
@@ -2441,6 +3075,20 @@ fn paint_sidebar_hugeicon(
                 stroke,
             );
             painter.line_segment([egui::pos2(cx + 3.0, cy), egui::pos2(cx + 5.5, cy)], stroke);
+        }
+        (Group::Flash, "FlashScreen") => {
+            // Hugeicons: Flash bolt
+            let pts = [
+                egui::pos2(cx + 1.6, cy - 5.4),
+                egui::pos2(cx - 3.2, cy + 0.6),
+                egui::pos2(cx - 0.4, cy + 0.6),
+                egui::pos2(cx - 1.6, cy + 5.4),
+                egui::pos2(cx + 3.2, cy - 0.7),
+                egui::pos2(cx + 0.4, cy - 0.7),
+            ];
+            for i in 0..pts.len() {
+                painter.line_segment([pts[i], pts[(i + 1) % pts.len()]], stroke);
+            }
         }
         (Group::App, "Preferences") => {
             // Hugeicons: Settings Gear
